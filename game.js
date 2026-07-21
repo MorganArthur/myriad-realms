@@ -59,6 +59,27 @@ const unitDefs = {
   cavalry: { name: "骑兵", icon: "♞", attack: 1.32, defense: 1.02, speed: 1.55, range: 1.7, supply: 1.5, color: "#d39a55" },
   siege: { name: "攻城兵", icon: "☄", attack: .62, defense: .68, speed: .58, range: 2.5, supply: 1.85, siege: 3.4, color: "#b66d55" }
 };
+const governmentDefs = {
+  monarchy: { name: "君主制", icon: "♛", stability: 5, tax: 1.12, welfare: 1, recruitment: 1 },
+  council: { name: "长老议会", icon: "✦", stability: 3, tax: .96, welfare: 1.18, recruitment: .9 },
+  republic: { name: "行会共和国", icon: "⚖", stability: 1, tax: 1.2, welfare: 1, recruitment: .94 },
+  clan: { name: "氏族联盟", icon: "⚔", stability: 2, tax: .9, welfare: .82, recruitment: 1.22 }
+};
+const policyDefs = {
+  tax: {
+    low: { name: "轻税", rate: .035, happiness: 6, unrest: -5 }, standard: { name: "常税", rate: .07, happiness: 0, unrest: 0 }, high: { name: "重税", rate: .125, happiness: -9, unrest: 10 }
+  },
+  welfare: {
+    austerity: { name: "紧缩", cost: 0, happiness: -4, unrest: 5 }, balanced: { name: "赈济", cost: .09, happiness: 3, unrest: -3 }, generous: { name: "普惠", cost: .22, happiness: 10, unrest: -9 }
+  },
+  military: {
+    pacifist: { name: "休兵", mobilization: .65, standing: .02, happiness: 3 }, defense: { name: "守土", mobilization: 1, standing: .06, happiness: 0 }, conquest: { name: "扩张", mobilization: 1.25, standing: .1, happiness: -3 }
+  }
+};
+const socialClassDefs = {
+  elite: { name: "权贵", icon: "♛" }, merchant: { name: "商贾", icon: "⚖" }, artisan: { name: "匠师", icon: "◆" },
+  peasant: { name: "平民", icon: "●" }, warrior: { name: "军户", icon: "⚔" }, dependent: { name: "眷属", icon: "◌" }
+};
 const statusLabels = { peace: "和平", alliance: "同盟", war: "战争" };
 const disasterDefs = {
   earthquake: { name: "地震", icon: "🌎", color: "#d7c0a1", radius: 4, duration: 70 },
@@ -215,9 +236,12 @@ function createKingdom(race = "human") {
   const def = raceDefs[race] || raceDefs.human;
   let raceCount = 0; for (const kingdom of kingdoms) if (kingdom.race === race) raceCount++;
   const baseName = def.names[raceCount % def.names.length], cycle = Math.floor(raceCount / def.names.length);
+  const government = { human: "monarchy", elf: "council", dwarf: "republic", orc: "clan" }[race] || "monarchy";
   const kingdom = {
     id, name: cycle ? `${baseName}·${cycle + 1}` : baseName, color: kingdomColors[id % kingdomColors.length], race,
-    resources: { food: 70, wood: 45, stone: 18 }, relations: {}, warWeariness: 0, famine: false, famineLevel: 0, famineSince: null
+    resources: { food: 70, wood: 45, stone: 18 }, relations: {}, warWeariness: 0, famine: false, famineLevel: 0, famineSince: null,
+    government, policies: { tax: "standard", welfare: "balanced", military: race === "orc" ? "conquest" : "defense" }, treasury: 35,
+    legitimacy: 68, unrest: 8, welfareCoverage: 1, lastTaxRevenue: 0, lastPolicyYear: 1, lastReformYear: 0, policyLockedUntil: 0, rebellionCooldownUntil: 0
   };
   kingdoms.push(kingdom);
   for (const other of kingdoms) if (other.id !== id) {
@@ -292,7 +316,7 @@ function spawnPerson(x, y, kingdom = null, race = null) {
   race ||= getKingdom(kingdom)?.race || "human";
   people.push({
     id: nextPersonId++, x, y, age: randi(16, 35), health: 100, food: rand(45, 90),
-    kingdom, race, village: null, role: "civilian", profession: "laborer", previousProfession: null,
+    kingdom, race, village: null, role: "civilian", profession: "laborer", previousProfession: null, socialClass: "peasant",
     unitType: null, isGeneral: false, leadership: 1,
     happiness: rand(48, 72), needs: { nutrition: 65, shelter: 45, safety: 65, health: 80 },
     cooldown: randi(0, 20), attackCooldown: 0, blessed: false, dead: false
@@ -434,7 +458,7 @@ function createVillage(founder) {
     kingdom: kingdom.id, level: 1, hp: 160,
     buildings: { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, road: 2, wall: 0, market: 0, dock: 0, warehouse: 0, temple: 0 }, structures: [],
     inventory: { food: 45, wood: 24, stone: 12 }, demand: { food: 0, wood: 0, stone: 0 }, supply: { food: 0, wood: 0, stone: 0 }, prices: { food: 1, wood: 1, stone: 1 },
-    buildCooldown: randi(8, 16), workforce: {}, averageHappiness: 60
+    buildCooldown: randi(8, 16), workforce: {}, averageHappiness: 60, unrest: 8
   };
   villages.push(village); founder.village = village.id; seedVillageStructures(village, village.buildings);
   claimTerritory(village, 3);
@@ -472,6 +496,121 @@ function averageHappiness(citizens) {
   if (!citizens.length) return 0;
   let total = 0; for (const person of citizens) total += Number(person.happiness) || 0;
   return total / citizens.length;
+}
+
+function governmentOf(kingdom) { return governmentDefs[kingdom?.government] || governmentDefs.monarchy; }
+function policyOf(kingdom, domain) {
+  const fallback = { tax: "standard", welfare: "balanced", military: "defense" }[domain];
+  return policyDefs[domain]?.[kingdom?.policies?.[domain]] || policyDefs[domain][fallback];
+}
+
+function socialClassFor(person) {
+  if (person.age < 16 || person.profession === "child") return "dependent";
+  if (person.isGeneral) return "elite";
+  if (person.role === "soldier") return "warrior";
+  if (person.profession === "merchant") return "merchant";
+  if (["builder", "healer"].includes(person.profession)) return "artisan";
+  return "peasant";
+}
+
+function assignSocialClasses(citizens = people) {
+  for (const person of citizens) person.socialClass = socialClassFor(person);
+}
+
+function socialClassCounts(citizens) {
+  const counts = Object.fromEntries(Object.keys(socialClassDefs).map(key => [key, 0]));
+  for (const person of citizens) counts[socialClassDefs[person.socialClass] ? person.socialClass : socialClassFor(person)]++;
+  return counts;
+}
+
+function setKingdomPolicy(kingdomId, domain, value, playerAction = false) {
+  const kingdom = getKingdom(kingdomId); if (!kingdom || !policyDefs[domain]?.[value] || kingdom.policies?.[domain] === value) return false;
+  kingdom.policies ||= { tax: "standard", welfare: "balanced", military: "defense" };
+  kingdom.policies[domain] = value; kingdom.lastPolicyYear = Math.floor(year);
+  if (playerAction) kingdom.policyLockedUntil = year + 8;
+  const domainLabel = { tax: "税制", welfare: "民生", military: "军事方针" }[domain];
+  addEvent(`${kingdom.name}将${domainLabel}调整为“${policyDefs[domain][value].name}”。`);
+  if (domain === "military") updateMilitaryRoles();
+  if (playerAction) { showToast(`${kingdom.name}的${domainLabel}已经改变`); updateUI(); renderDirty = true; }
+  return true;
+}
+
+function rebellionCandidate(kingdom) {
+  const realmVillages = villagesOfKingdom(kingdom.id); if (realmVillages.length < 2) return null;
+  const capital = [...realmVillages].sort((a, b) => peopleOfVillage(b.id).length - peopleOfVillage(a.id).length)[0];
+  return [...realmVillages].filter(village => village.id !== capital?.id && peopleOfVillage(village.id).length >= 2).sort((a, b) => (b.unrest || 0) - (a.unrest || 0) || Math.hypot(b.x - capital.x, b.y - capital.y) - Math.hypot(a.x - capital.x, a.y - capital.y))[0] || null;
+}
+
+function triggerRebellion(parent, village) {
+  if (!parent || !village || village.kingdom !== parent.id || villagesOfKingdom(parent.id).length < 2 || year < (parent.rebellionCooldownUntil || 0)) return null;
+  const residents = peopleOfVillage(village.id), raceTotals = Object.fromEntries(Object.keys(raceDefs).map(race => [race, 0]));
+  for (const resident of residents) raceTotals[resident.race] = (raceTotals[resident.race] || 0) + 1;
+  const dominantRace = Object.entries(raceTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || parent.race;
+  const rebel = createKingdom(dominantRace), rootName = village.name.replace(/[村镇城]$/, "");
+  rebel.name = `${rootName}${dominantRace === "orc" ? "战团" : "自由领"}`; rebel.government = dominantRace === "orc" ? "clan" : "republic";
+  rebel.policies = { tax: "low", welfare: "balanced", military: "defense" }; rebel.legitimacy = 58; rebel.unrest = 22; rebel.rebellionCooldownUntil = year + 10;
+  for (const resource of ["food", "wood", "stone"]) {
+    const seized = Math.max(0, (parent.resources[resource] || 0) * .18); parent.resources[resource] -= seized; rebel.resources[resource] = seized;
+  }
+  const seizedTreasury = Math.max(0, (parent.treasury || 0) * .2); parent.treasury = Math.max(0, (parent.treasury || 0) - seizedTreasury); rebel.treasury = seizedTreasury;
+  village.kingdom = rebel.id; village.unrest = 24;
+  for (const resident of residents) { resident.kingdom = rebel.id; resident.happiness = Math.min(100, resident.happiness + 10); }
+  const transferRadius = 4 + village.level * 2;
+  for (let y = Math.max(0, village.y - transferRadius); y <= Math.min(MAP_H - 1, village.y + transferRadius); y++) for (let x = Math.max(0, village.x - transferRadius); x <= Math.min(MAP_W - 1, village.x + transferRadius); x++) {
+    const tile = tileAt(x, y); if (tile?.owner === parent.id && Math.hypot(x - village.x, y - village.y) <= transferRadius) tile.owner = rebel.id;
+  }
+  parent.unrest = Math.max(35, parent.unrest - 18); parent.legitimacy = Math.max(0, parent.legitimacy - 15); parent.rebellionCooldownUntil = year + 8;
+  setRelation(parent.id, rebel.id, "war", -88, true); addEvent(`${village.name}发动叛乱，脱离${parent.name}并建立${rebel.name}！`);
+  updateMilitaryRoles(); updateTradeRoutes(); indexesReady = false; renderDirty = true;
+  return rebel;
+}
+
+function interveneUnrest(kingdomId, amount) {
+  const kingdom = getKingdom(kingdomId); if (!kingdom || kingdom.defeated) return;
+  kingdom.unrest = clamp((kingdom.unrest || 0) + amount, 0, 100);
+  addEvent(amount > 0 ? `神力煽动了${kingdom.name}的反对势力。` : `神谕暂时安抚了${kingdom.name}的民心。`);
+  const candidate = rebellionCandidate(kingdom);
+  if (amount > 0 && kingdom.unrest >= 88 && candidate) triggerRebellion(kingdom, candidate);
+  showToast(amount > 0 ? "动乱正在蔓延" : "民心暂时安定"); updateUI(); renderDirty = true;
+}
+
+function governanceStep() {
+  for (const kingdom of kingdoms) {
+    if (kingdom.defeated) continue;
+    const citizens = peopleOfKingdom(kingdom.id), realmVillages = villagesOfKingdom(kingdom.id); if (!citizens.length && !realmVillages.length) continue;
+    assignSocialClasses(citizens);
+    const classes = socialClassCounts(citizens), government = governmentOf(kingdom), tax = policyOf(kingdom, "tax"), welfare = policyOf(kingdom, "welfare"), military = policyOf(kingdom, "military");
+    const adults = citizens.length - classes.dependent, markets = realmVillages.reduce((sum, village) => sum + buildingCount(village, "market"), 0);
+    const economicBase = adults * .55 + classes.merchant * 1.8 + classes.artisan * .7 + markets * 2.2;
+    kingdom.lastTaxRevenue = economicBase * tax.rate * 4 * government.tax; kingdom.treasury = clamp((kingdom.treasury || 0) + kingdom.lastTaxRevenue, 0, 99999);
+    const welfareCost = citizens.length * welfare.cost * government.welfare, paid = Math.min(kingdom.treasury, welfareCost);
+    kingdom.treasury -= paid; kingdom.welfareCoverage = welfareCost > 0 ? paid / welfareCost : 1;
+    const happiness = averageHappiness(citizens), lowCoverage = (1 - kingdom.welfareCoverage) * 24;
+    const unrestTarget = clamp(Math.max(0, 56 - happiness) * 1.12 + (kingdom.famineLevel || 0) * .5 + (kingdom.warWeariness || 0) * .27 + tax.unrest + welfare.unrest + lowCoverage + (military.happiness < 0 && !kingdomAtWar(kingdom.id) ? -military.happiness : 0) - government.stability, 0, 100);
+    kingdom.unrest = clamp((kingdom.unrest || 0) + (unrestTarget - (kingdom.unrest || 0)) * .14, 0, 100);
+    const treasurySecurity = Math.min(10, kingdom.treasury / Math.max(1, citizens.length) * .45), legitimacyTarget = clamp(happiness * .68 + government.stability + treasurySecurity - kingdom.unrest * .32 - (kingdom.warWeariness || 0) * .12, 0, 100);
+    kingdom.legitimacy = clamp((kingdom.legitimacy || 60) + (legitimacyTarget - (kingdom.legitimacy || 60)) * .1, 0, 100);
+    const capital = [...realmVillages].sort((a, b) => peopleOfVillage(b.id).length - peopleOfVillage(a.id).length)[0];
+    for (const village of realmVillages) {
+      const localHappiness = averageHappiness(peopleOfVillage(village.id)), distance = capital ? Math.hypot(village.x - capital.x, village.y - capital.y) : 0;
+      const localTarget = clamp(kingdom.unrest + Math.max(0, 58 - localHappiness) * .75 + Math.max(0, distance - 30) * .25, 0, 100);
+      village.unrest = clamp((village.unrest || kingdom.unrest) + (localTarget - (village.unrest || kingdom.unrest)) * .18, 0, 100);
+    }
+    if (year >= (kingdom.policyLockedUntil || 0) && year - (kingdom.lastPolicyYear || 0) >= 8) {
+      const desiredTax = kingdom.unrest > 56 ? "low" : kingdom.treasury < citizens.length * .32 ? "high" : "standard";
+      const desiredWelfare = kingdom.famine || kingdom.unrest > 48 ? "generous" : kingdom.treasury < citizens.length * .22 ? "austerity" : "balanced";
+      const desiredMilitary = kingdomAtWar(kingdom.id) ? (kingdom.race === "orc" && kingdom.warWeariness < 35 ? "conquest" : "defense") : kingdom.warWeariness > 30 ? "pacifist" : kingdom.race === "orc" ? "conquest" : "defense";
+      setKingdomPolicy(kingdom.id, "tax", desiredTax); setKingdomPolicy(kingdom.id, "welfare", desiredWelfare); setKingdomPolicy(kingdom.id, "military", desiredMilitary);
+      kingdom.lastPolicyYear = Math.floor(year);
+    }
+    if (kingdom.legitimacy < 28 && kingdom.unrest > 56 && year - (kingdom.lastReformYear || 0) > 15 && Math.random() < .12) {
+      const oldGovernment = governmentOf(kingdom).name, nextGovernment = kingdom.government === "republic" ? "council" : kingdom.race === "orc" ? "clan" : "republic";
+      kingdom.government = nextGovernment; kingdom.lastReformYear = Math.floor(year); kingdom.legitimacy = Math.min(100, kingdom.legitimacy + 16); kingdom.unrest = Math.max(0, kingdom.unrest - 14);
+      addEvent(`${kingdom.name}废除${oldGovernment}，改组为${governmentDefs[nextGovernment].name}。`);
+    }
+    const candidate = rebellionCandidate(kingdom);
+    if (candidate && kingdom.unrest > 78 && (candidate.unrest || 0) > 68 && Math.random() < (kingdom.unrest - 72) * .012) triggerRebellion(kingdom, candidate);
+  }
 }
 
 function desiredProfessionCounts(village, adults) {
@@ -512,6 +651,7 @@ function updateProfessions() {
     }
     village.workforce = professionCounts(residents); village.averageHappiness = averageHappiness(residents);
   }
+  assignSocialClasses();
 }
 
 function performHealerWork(village, healerCount) {
@@ -561,7 +701,11 @@ function updatePersonWellbeing(person, home, realm) {
   const employed = !["laborer", "child"].includes(person.profession) ? 6 : person.profession === "laborer" ? -3 : 0;
   const civicBonus = home ? Math.min(10, buildingCount(home, "temple") * 4 + buildingCount(home, "market") * 1.5) : 0;
   const faminePenalty = realm?.famine ? 15 + (realm.famineLevel || 0) * .22 : 0;
-  const happinessTarget = clamp(person.needs.nutrition * .34 + person.needs.shelter * .22 + person.needs.safety * .22 + person.needs.health * .22 + employed + civicBonus + (person.blessed ? 8 : 0) - faminePenalty, 0, 100);
+  const taxMood = realm ? policyOf(realm, "tax").happiness : 0, welfare = realm ? policyOf(realm, "welfare") : null, welfareMood = welfare ? welfare.happiness * (realm.welfareCoverage ?? 1) : 0;
+  const militaryPolicy = realm?.policies?.military || "defense", militaryMood = atWar ? militaryPolicy === "conquest" ? 4 : militaryPolicy === "pacifist" ? -7 : 1 : policyDefs.military[militaryPolicy]?.happiness || 0;
+  const socialClass = socialClassDefs[person.socialClass] ? person.socialClass : socialClassFor(person);
+  const classMood = realm?.government === "monarchy" && socialClass === "elite" ? 5 : realm?.government === "republic" && socialClass === "merchant" ? 4 : militaryPolicy === "conquest" && socialClass === "warrior" ? 3 : realm?.policies?.tax === "high" && socialClass === "peasant" ? -2 : 0;
+  const happinessTarget = clamp(person.needs.nutrition * .34 + person.needs.shelter * .22 + person.needs.safety * .22 + person.needs.health * .22 + employed + civicBonus + taxMood + welfareMood + militaryMood + classMood + (person.blessed ? 8 : 0) - faminePenalty, 0, 100);
   person.happiness += (happinessTarget - person.happiness) * .025;
   if (person.happiness < 10) person.health -= .015;
   else if (person.happiness > 82 && !person.plague) person.health = Math.min(maxHealth, person.health + .008);
@@ -855,7 +999,7 @@ function simulationStep() {
   simulateArmies();
   regenerateBiomass(); if (ticks % 2 === 0) simulateAnimals(2);
   if (ticks % 10 === 0) produceResources();
-  if (ticks % 60 === 0) dispatchCaravans();
+  if (ticks % 60 === 0) { dispatchCaravans(); governanceStep(); }
   if (ticks % 45 === 0) { updateMilitaryRoles(); updateProfessions(); }
   if (ticks % 120 === 0) { diplomacyStep(); updateTradeRoutes(); }
   if (ticks % 250 === 0) attemptColonies();
@@ -1386,14 +1530,17 @@ function updateMilitaryRoles() {
       citizens.push(person); (person.role === "soldier" ? soldiers : recruits).push(person);
     }
     const barracks = villagesOfKingdom(kingdom.id).reduce((sum, v) => sum + (v.buildings.barracks || 0), 0);
-    const desired = kingdomAtWar(kingdom.id) ? Math.min(Math.floor(citizens.length * .38), 8 + barracks * 6) : Math.min(Math.floor(citizens.length * .08), barracks * 2);
+    const militaryPolicy = policyOf(kingdom, "military"), government = governmentOf(kingdom);
+    const desired = kingdomAtWar(kingdom.id)
+      ? Math.min(Math.floor(citizens.length * .38 * militaryPolicy.mobilization), Math.floor((8 + barracks * 6) * government.recruitment))
+      : Math.min(Math.floor(citizens.length * militaryPolicy.standing), Math.floor(barracks * 2 * government.recruitment) + (kingdom.policies?.military === "conquest" && citizens.length >= 10 ? 1 : 0));
     for (let i = 0; i < desired - soldiers.length && i < recruits.length; i++) {
       recruits[i].previousProfession = recruits[i].profession; recruits[i].role = "soldier"; recruits[i].profession = "soldier"; recruits[i].unitType = barracks ? "infantry" : "militia"; recruits[i].health = Math.max(recruits[i].health, 110);
     }
     for (let i = desired; i < soldiers.length; i++) demobilizePerson(soldiers[i]);
     assignUnitTypes(kingdom, peopleOfKingdom(kingdom.id).filter(person => person.role === "soldier"));
   }
-  reorganizeArmies();
+  reorganizeArmies(); assignSocialClasses();
 }
 
 function nearestFriendlySupplyVillage(army) {
@@ -1488,7 +1635,9 @@ function militaryBehavior(person) {
 function captureVillage(village, newKingdomId) {
   const oldKingdomId = village.kingdom; if (oldKingdomId === newKingdomId) return;
   const oldKingdom = getKingdom(oldKingdomId), newKingdom = getKingdom(newKingdomId);
-  village.kingdom = newKingdomId; village.hp = 100;
+  village.kingdom = newKingdomId; village.hp = 100; village.unrest = Math.max(68, village.unrest || 0);
+  if (oldKingdom) { oldKingdom.unrest = clamp((oldKingdom.unrest || 0) + 8, 0, 100); oldKingdom.legitimacy = Math.max(0, (oldKingdom.legitimacy || 60) - 6); }
+  if (newKingdom) newKingdom.unrest = clamp((newKingdom.unrest || 0) + 3, 0, 100);
   const capturedHouse = (village.structures || []).find(structure => structure.type === "house");
   if (capturedHouse && buildingCount(village, "house") > 1) damageStructure(village, capturedHouse, capturedHouse.maxHp, false);
   for (const army of armies) if (army.targetVillageId === village.id) { army.targetVillageId = null; army.siegeProgress = 0; army.status = "advance"; }
@@ -1611,6 +1760,14 @@ function workforceHtml(counts) {
   return Object.entries(professionDefs).filter(([key]) => key !== "child" && (counts[key] || 0) > 0).map(([key, def]) => `<span class="profession-item" style="border-color:${def.color}">${def.icon} ${def.name}<b>${counts[key]}</b></span>`).join("") || `<span class="muted">暂无成年劳动力</span>`;
 }
 
+function socialClassHtml(counts) {
+  return Object.entries(socialClassDefs).filter(([key]) => (counts[key] || 0) > 0).map(([key, def]) => `<span class="class-item">${def.icon} ${def.name}<b>${counts[key]}</b></span>`).join("") || `<span class="muted">暂无人口阶层</span>`;
+}
+
+function policyControlHtml(kingdom, domain, label) {
+  return `<div class="policy-row"><span>${label}</span><div>${Object.entries(policyDefs[domain]).map(([value, def]) => `<button class="policy-choice ${kingdom.policies?.[domain] === value ? "active" : ""}" data-policy-domain="${domain}" data-policy-value="${value}">${def.name}</button>`).join("")}</div></div>`;
+}
+
 function needMeter(label, value) {
   const score = clamp(Math.round(value || 0), 0, 100);
   return `<div class="need-row"><span>${label}</span><i><b style="width:${score}%"></b></i><em>${score}</em></div>`;
@@ -1641,7 +1798,8 @@ function inspectAt(x, y) {
     const race = raceDefs[person.race] || raceDefs.human, profession = professionDefs[person.role === "soldier" ? "soldier" : person.profession] || professionDefs.laborer;
     const unit = person.role === "soldier" ? unitDefs[person.unitType] || unitDefs.militia : null, army = unit ? armyOfSoldier(person.id) : null;
     const militaryRows = unit ? `<div class="detail-row"><span>军职 / 兵种</span><b>${person.isGeneral ? "★ 将领" : "士兵"} · ${unit.icon} ${unit.name}</b></div><div class="detail-row"><span>所属军团</span><b>${army?.name || "地方守军"}</b></div>${army ? `<div class="detail-row"><span>军团士气 / 补给</span><b>${Math.round(army.morale)} / ${Math.round(army.supply)}</b></div>` : ""}` : "";
-    box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${unit ? `${unit.icon} ${unit.name}` : `${profession.icon} ${profession.name}`} #${person.id}</h4><div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div>${militaryRows}<div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
+    const socialClass = socialClassDefs[person.socialClass] || socialClassDefs.peasant;
+    box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${unit ? `${unit.icon} ${unit.name}` : `${profession.icon} ${profession.name}`} #${person.id}</h4><div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>社会阶层</span><b>${socialClass.icon} ${socialClass.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div>${militaryRows}<div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
   } else if (caravan) {
     const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), source = getVillage(caravan.fromVillage), destination = getVillage(caravan.toVillage), cargo = tradeResourceDefs[caravan.resource], progress = route?.path?.length > 1 ? caravan.pathIndex / (route.path.length - 1) * 100 : 0;
     box.innerHTML = `<h4>${route?.mode === "sea" ? "⛵" : "🐴"} 商队 #${caravan.id}</h4><div class="detail-row"><span>路线</span><b>${source?.name} → ${destination?.name}</b></div><div class="detail-row"><span>货物</span><b>${cargo?.icon} ${cargo?.name} ${Math.floor(caravan.amount)}</b></div><div class="detail-row"><span>交换货物</span><b>${caravan.returnResource ? `${tradeResourceDefs[caravan.returnResource].icon} ${tradeResourceDefs[caravan.returnResource].name} ${Math.floor(caravan.returnAmount)}` : "国内调拨"}</b></div><div class="detail-row"><span>状态</span><b>${route?.status === "blockaded" ? "突破封锁" : "运输中"}</b></div><div class="need-list">${needMeter("行程", progress)}${needMeter("商队安全", caravan.hp)}</div>`;
@@ -1653,7 +1811,7 @@ function inspectAt(x, y) {
     box.innerHTML = `<h4>${def.icon} ${def.name} #${inspectedStructure.id}</h4><div class="detail-row"><span>所属聚落</span><b>${inspectedStructureVillage.name}</b></div><div class="detail-row"><span>所属王国</span><b>${kingdom?.name || "无主"}</b></div><div class="detail-row"><span>建造纪元</span><b>${inspectedStructure.builtYear}</b></div><div class="detail-row"><span>坐标</span><b>${inspectedStructure.x}, ${inspectedStructure.y}</b></div><div class="need-list">${needMeter("建筑耐久", integrity)}</div><p class="muted">${def.effect}</p>`;
   } else if (village) {
     const k = getKingdom(village.kingdom), pop = peopleOfVillage(village.id).length, b = village.buildings, routes = tradeRoutes.filter(route => route.fromVillage === village.id || route.toVillage === village.id);
-    box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(village.averageHappiness || 0)}</b></div><div class="detail-row"><span>防御 / 规模</span><b>${Math.round(village.hp)} / ${villageMaxHp(village)} · ${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="detail-row"><span>贸易路线</span><b>${routes.length} 条</b></div><div class="inventory-list">${inventoryHtml(village)}</div><div class="building-grid">${Object.entries(buildingDefs).filter(([key]) => (b[key] || 0) > 0).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div><h3>劳动力</h3><div class="profession-list">${workforceHtml(village.workforce || {})}</div>`;
+    box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>平均幸福 / 动乱</span><b>${Math.round(village.averageHappiness || 0)} / ${Math.round(village.unrest || 0)}</b></div><div class="detail-row"><span>防御 / 规模</span><b>${Math.round(village.hp)} / ${villageMaxHp(village)} · ${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="detail-row"><span>贸易路线</span><b>${routes.length} 条</b></div><div class="inventory-list">${inventoryHtml(village)}</div><div class="building-grid">${Object.entries(buildingDefs).filter(([key]) => (b[key] || 0) > 0).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div><h3>劳动力</h3><div class="profession-list">${workforceHtml(village.workforce || {})}</div>`;
   } else {
     const t = tileAt(x, y), labels = { deep:"深海",water:"浅海",sand:"沙滩",grass:"草原",forest:"森林",mountain:"山地",ash:"焦土" };
     box.innerHTML = `<h4>▦ ${labels[t?.type] || "世界之外"}</h4><div class="detail-row"><span>坐标</span><b>${x}, ${y}</b></div><div class="detail-row"><span>肥沃度</span><b>${Math.round((t?.fertility || 0) * 100)}%</b></div><div class="detail-row"><span>植被量</span><b>${Math.round((t?.biomass || 0) * 100)}%</b></div>`;
@@ -1671,11 +1829,11 @@ function inspectKingdom(kingdomId) {
     if (raceCounts[citizen.race] !== undefined) raceCounts[citizen.race]++;
   }
   const demographics = Object.entries(raceDefs).map(([key, def]) => `${def.icon}${raceCounts[key]}`).join(" ");
-  const jobs = professionCounts(citizens), happiness = averageHappiness(citizens), realmArmies = armies.filter(army => army.kingdomId === kingdomId);
+  const jobs = professionCounts(citizens), classes = socialClassCounts(citizens), happiness = averageHappiness(citizens), realmArmies = armies.filter(army => army.kingdomId === kingdomId), government = governmentOf(kingdom);
   const structures = realmVillages.flatMap(village => village.structures || []), roads = structures.filter(structure => structure.type === "road").length, walls = structures.filter(structure => structure.type === "wall").length;
   const relations = Object.entries(kingdom.relations || {}).map(([id, r]) => `${getKingdom(Number(id))?.name || "未知"}：${statusLabels[r.status]}`).join(" · ") || "尚无外交关系";
   box.classList.remove("empty");
-  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>主体种族</span><b>${race.name}</b></div><div class="detail-row"><span>人口 / 士兵 / 军团</span><b>${citizens.length} / ${soldiers} / ${realmArmies.length}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(happiness)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
+  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>政体 / 主体种族</span><b>${government.icon} ${government.name} · ${race.name}</b></div><div class="detail-row"><span>人口 / 士兵 / 军团</span><b>${citizens.length} / ${soldiers} / ${realmArmies.length}</b></div><div class="detail-row"><span>幸福 / 合法性 / 动乱</span><b>${Math.round(happiness)} / ${Math.round(kingdom.legitimacy)} / ${Math.round(kingdom.unrest)}</b></div><div class="detail-row"><span>国库 / 本期税收</span><b>¤ ${Math.floor(kingdom.treasury || 0)} / +${(kingdom.lastTaxRevenue || 0).toFixed(1)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><div class="need-list">${needMeter("政权合法性", kingdom.legitimacy)}${needMeter("社会动乱", kingdom.unrest)}</div><h3>国家政策</h3><div class="policy-controls">${policyControlHtml(kingdom, "tax", "税制")}${policyControlHtml(kingdom, "welfare", "民生")}${policyControlHtml(kingdom, "military", "军事")}</div><div class="intervention-row"><button data-unrest-action="calm">安抚民心</button><button class="danger" data-unrest-action="incite">煽动叛乱</button></div><h3>社会阶层</h3><div class="class-list">${socialClassHtml(classes)}</div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
 }
 
 function inspectTradeRoute(routeId) {
@@ -1905,12 +2063,12 @@ function updateUI() {
   document.getElementById("eventLog").innerHTML = events.map(e => `<div class="event"><time>纪元 ${e.year}</time>${e.text}</div>`).join("");
   const speciesCounts = animalCounts();
   document.getElementById("ecologyList").innerHTML = Object.entries(animalDefs).map(([species, def]) => `<div class="species-item"><span>${def.icon} ${def.name}</span><b>${speciesCounts[species]}</b></div>`).join("");
-  const jobs = professionCounts(people), worldHappiness = averageHappiness(people), famineCount = activeKingdoms.filter(kingdom => kingdom.famine).length;
+  const jobs = professionCounts(people), worldClasses = socialClassCounts(people), worldHappiness = averageHappiness(people), famineCount = activeKingdoms.filter(kingdom => kingdom.famine).length;
   const worldBuildings = emptyBuildingCounts();
   for (const village of villages) for (const structure of village.structures || []) if (worldBuildings[structure.type] !== undefined) worldBuildings[structure.type]++;
   const structureCount = Object.values(worldBuildings).reduce((sum, count) => sum + count, 0);
   const infrastructure = Object.entries(buildingDefs).filter(([type]) => type !== "hall" && worldBuildings[type] > 0).map(([type, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${worldBuildings[type]}</span>`).join("");
-  document.getElementById("societyList").innerHTML = people.length ? `<div class="society-summary"><span>平均幸福<b>${Math.round(worldHappiness)}</b></span><span>饥荒王国<b>${famineCount}</b></span><span>实体建筑<b>${structureCount}</b></span></div><div class="profession-list">${workforceHtml(jobs)}</div><div class="building-grid infrastructure-grid">${infrastructure}</div>` : `<p class="muted">尚无社会分工</p>`;
+  document.getElementById("societyList").innerHTML = people.length ? `<div class="society-summary"><span>平均幸福<b>${Math.round(worldHappiness)}</b></span><span>饥荒王国<b>${famineCount}</b></span><span>实体建筑<b>${structureCount}</b></span></div><div class="class-list">${socialClassHtml(worldClasses)}</div><div class="profession-list">${workforceHtml(jobs)}</div><div class="building-grid infrastructure-grid">${infrastructure}</div>` : `<p class="muted">尚无社会分工</p>`;
   const activeRoutes = tradeRoutes.filter(route => route.status === "active").length, blockedRoutes = tradeRoutes.filter(route => route.status === "blockaded").length, delivered = tradeRoutes.reduce((sum, route) => sum + (route.delivered || 0), 0);
   const routeOrder = { blockaded: 0, active: 1, dormant: 2 };
   const routeItems = [...tradeRoutes].sort((a, b) => (routeOrder[a.status] ?? 3) - (routeOrder[b.status] ?? 3)).slice(0, 7).map(route => {
@@ -1926,6 +2084,10 @@ function updateUI() {
     return `<button class="army-item ${army.status}" data-army="${army.id}" style="border-color:${kingdom?.color || "#777"}"><b>⚑ ${army.name}</b><span>${armyStatusLabels[army.status] || army.status} · ${members.length} 人${target ? ` → ${target.name}` : ""}</span><i><em style="width:${supply}%"></em></i><small>士气 ${Math.round(army.morale)} · 补给 ${supply}%</small></button>`;
   }).join("");
   document.getElementById("armyList").innerHTML = armies.length ? `<div class="army-summary"><span>军团<b>${armies.length}</b></span><span>兵力<b>${armyTroops}</b></span><span>围城<b>${sieges}</b></span><span>缺粮<b>${lowSupplyArmies}</b></span></div><div class="army-items">${armyItems}</div>` : `<p class="muted">兵营扩张或战争爆发后将组建军团</p>`;
+  document.getElementById("governanceList").innerHTML = activeKingdoms.length ? activeKingdoms.map(kingdom => {
+    const government = governmentOf(kingdom), unrest = Math.round(kingdom.unrest || 0), legitimacy = Math.round(kingdom.legitimacy || 0);
+    return `<button class="governance-item ${unrest >= 65 ? "unstable" : ""}" data-governance="${kingdom.id}" style="border-color:${kingdom.color}"><b>${government.icon} ${kingdom.name}</b><span>${government.name} · ¤ ${Math.floor(kingdom.treasury || 0)}</span><small>${policyOf(kingdom, "tax").name} · ${policyOf(kingdom, "welfare").name} · ${policyOf(kingdom, "military").name}</small><i><em class="legitimacy" style="width:${legitimacy}%"></em><em class="unrest" style="width:${unrest}%"></em></i><small>合法性 ${legitimacy} · 动乱 ${unrest}</small></button>`;
+  }).join("") : `<p class="muted">尚未形成政治秩序</p>`;
   document.getElementById("disasterList").innerHTML = activeDisasters.length ? activeDisasters.map(disaster => {
     const def = disasterDefs[disaster.type], progress = clamp(disaster.duration / Math.max(1, disaster.maxDuration) * 100, 0, 100);
     return `<div class="disaster-item ${disaster.type}"><div><b>${def.icon} ${def.name}</b><span>${disasterLocation(disaster)} · 约 ${(disaster.duration * .02).toFixed(1)} 纪元</span></div><i style="width:${progress}%"></i></div>`;
@@ -1934,7 +2096,7 @@ function updateUI() {
     const citizens = peopleOfKingdom(k.id), pop = citizens.length, towns = villagesOfKingdom(k.id).length, race = raceDefs[k.race] || raceDefs.human;
     const structures = villagesOfKingdom(k.id).reduce((sum, village) => sum + (village.structures?.length || 0), 0);
     let soldiers = 0; for (const citizen of citizens) if (citizen.role === "soldier") soldiers++;
-    return `<button class="kingdom-item" data-kingdom="${k.id}" style="border-color:${k.color}"><b>${race.icon} ${k.name}${kingdomAtWar(k.id) ? '<i class="war-badge">交战</i>' : ""}${k.famine ? '<i class="famine-badge">饥荒</i>' : ""}</b><span>${race.name} · ${pop} 人 · ⚔ ${soldiers} · ${towns} 聚落 · 🏗 ${structures} · 🙂 ${Math.round(averageHappiness(citizens))}</span><span class="resource-line"><i>🌾 ${Math.floor(k.resources.food)}</i><i>🪵 ${Math.floor(k.resources.wood)}</i><i>🪨 ${Math.floor(k.resources.stone)}</i></span></button>`;
+    return `<button class="kingdom-item" data-kingdom="${k.id}" style="border-color:${k.color}"><b>${race.icon} ${k.name}${kingdomAtWar(k.id) ? '<i class="war-badge">交战</i>' : ""}${k.famine ? '<i class="famine-badge">饥荒</i>' : ""}${(k.unrest || 0) >= 65 ? '<i class="unrest-badge">动乱</i>' : ""}</b><span>${governmentOf(k).name} · ${pop} 人 · ⚔ ${soldiers} · ${towns} 聚落 · 🏗 ${structures} · 🙂 ${Math.round(averageHappiness(citizens))}</span><span class="resource-line"><i>🌾 ${Math.floor(k.resources.food)}</i><i>🪵 ${Math.floor(k.resources.wood)}</i><i>🪨 ${Math.floor(k.resources.stone)}</i></span></button>`;
   }).join("") : `<p class="muted">世界尚无文明</p>`;
   const relationOrder = { war: 0, alliance: 1, peace: 2 };
   const sortedRelations = relationPairs.sort((a, b) => relationOrder[a.status] - relationOrder[b.status]);
@@ -1958,7 +2120,7 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 8, savedAt: new Date().toISOString(),
+    version: 9, savedAt: new Date().toISOString(),
     meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length },
     worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1]),
     people, animals, villages, kingdoms, events, activeDisasters, tradeRoutes, caravans, armies, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextDisasterId, nextDisasterYear,
@@ -1997,6 +2159,7 @@ function normalizeWorldData(sourceVersion = 1) {
     person.previousProfession = professionDefs[person.previousProfession] && person.previousProfession !== "soldier" ? person.previousProfession : null;
     person.unitType = person.role === "soldier" && unitDefs[person.unitType] ? person.unitType : person.role === "soldier" ? "militia" : null;
     person.isGeneral = person.role === "soldier" && Boolean(person.isGeneral); person.leadership = person.role === "soldier" ? clamp(Number(person.leadership) || 1, .8, 1.4) : 1;
+    person.socialClass = socialClassDefs[person.socialClass] ? person.socialClass : socialClassFor(person);
     person.happiness = clamp(Number(person.happiness) || 60, 0, 100);
     const savedNeeds = person.needs || {};
     person.needs = {
@@ -2030,7 +2193,7 @@ function normalizeWorldData(sourceVersion = 1) {
       village.inventory = { food: (realm?.resources.food || 70) / realmVillageCount * .55, wood: (realm?.resources.wood || 45) / realmVillageCount * .55, stone: (realm?.resources.stone || 18) / realmVillageCount * .55 };
     }
     village.demand = { food: 0, wood: 0, stone: 0, ...(village.demand || {}) }; village.supply = { food: 0, wood: 0, stone: 0, ...(village.supply || {}) }; village.prices = { food: 1, wood: 1, stone: 1, ...(village.prices || {}) };
-    village.workforce = professionCounts(people.filter(person => !person.dead && person.village === village.id)); village.averageHappiness = Number(village.averageHappiness) || 60;
+    village.workforce = professionCounts(people.filter(person => !person.dead && person.village === village.id)); village.averageHappiness = Number(village.averageHappiness) || 60; village.unrest = clamp(Number.isFinite(Number(village.unrest)) ? Number(village.unrest) : 8, 0, 100);
     recalculateVillageMarket(village);
   }
   for (const kingdom of kingdoms) {
@@ -2038,6 +2201,15 @@ function normalizeWorldData(sourceVersion = 1) {
     kingdom.resources = { food: 70, wood: 45, stone: 18, ...(kingdom.resources || {}) };
     kingdom.relations ||= {}; kingdom.warWeariness ||= 0; kingdom.defeated ||= false;
     kingdom.famineLevel = clamp(Number(kingdom.famineLevel) || 0, 0, 100); kingdom.famine = Boolean(kingdom.famine && kingdom.famineLevel >= 5); kingdom.famineSince = kingdom.famine ? Number(kingdom.famineSince) || Math.floor(year) : null;
+    kingdom.government = governmentDefs[kingdom.government] ? kingdom.government : ({ human: "monarchy", elf: "council", dwarf: "republic", orc: "clan" }[kingdom.race] || "monarchy");
+    const savedPolicies = kingdom.policies || {};
+    kingdom.policies = {
+      tax: policyDefs.tax[savedPolicies.tax] ? savedPolicies.tax : "standard",
+      welfare: policyDefs.welfare[savedPolicies.welfare] ? savedPolicies.welfare : "balanced",
+      military: policyDefs.military[savedPolicies.military] ? savedPolicies.military : kingdom.race === "orc" ? "conquest" : "defense"
+    };
+    kingdom.treasury = clamp(Number.isFinite(Number(kingdom.treasury)) ? Number(kingdom.treasury) : 35, 0, 99999); kingdom.legitimacy = clamp(Number.isFinite(Number(kingdom.legitimacy)) ? Number(kingdom.legitimacy) : 68, 0, 100); kingdom.unrest = clamp(Number.isFinite(Number(kingdom.unrest)) ? Number(kingdom.unrest) : 8, 0, 100);
+    kingdom.welfareCoverage = clamp(Number.isFinite(Number(kingdom.welfareCoverage)) ? Number(kingdom.welfareCoverage) : 1, 0, 1); kingdom.lastTaxRevenue = Math.max(0, Number(kingdom.lastTaxRevenue) || 0); kingdom.lastPolicyYear = Number(kingdom.lastPolicyYear) || Math.floor(year); kingdom.lastReformYear = Number(kingdom.lastReformYear) || 0; kingdom.policyLockedUntil = Number(kingdom.policyLockedUntil) || 0; kingdom.rebellionCooldownUntil = Number(kingdom.rebellionCooldownUntil) || 0;
   }
   for (const village of villages) village.name = cleanText(village.name) || "无名聚落";
   for (const event of events) event.text = cleanText(event.text);
@@ -2200,9 +2372,18 @@ document.getElementById("tradeList").addEventListener("click", e => {
 document.getElementById("armyList").addEventListener("click", e => {
   const item = e.target.closest("[data-army]"); if (item) inspectArmy(Number(item.dataset.army));
 });
+document.getElementById("governanceList").addEventListener("click", e => {
+  const item = e.target.closest("[data-governance]"); if (item) inspectKingdom(Number(item.dataset.governance));
+});
 document.getElementById("diplomacyList").addEventListener("click", e => {
   const button = e.target.closest("[data-diplomacy-action]"); if (!button) return;
   interveneDiplomacy(Number(button.dataset.kingdomA), Number(button.dataset.kingdomB), button.dataset.diplomacyAction);
+});
+document.getElementById("selectionCard").addEventListener("click", e => {
+  const policyButton = e.target.closest("[data-policy-domain]");
+  if (policyButton && selectedKingdomId !== null) { setKingdomPolicy(selectedKingdomId, policyButton.dataset.policyDomain, policyButton.dataset.policyValue, true); return; }
+  const unrestButton = e.target.closest("[data-unrest-action]");
+  if (unrestButton && selectedKingdomId !== null) interveneUnrest(selectedKingdomId, unrestButton.dataset.unrestAction === "incite" ? 24 : -22);
 });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 canvas.addEventListener("mousedown", e => {

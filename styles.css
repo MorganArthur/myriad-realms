@@ -94,7 +94,11 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .profession-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .profession-item { display: flex; justify-content: space-between; padding: 5px 6px; border-left: 3px solid; border-radius: 3px; background: #191c15; color: #c8cab1; font-size: 9px; }
 .profession-item b { color: var(--cream); }
+.class-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.class-item { display: flex; justify-content: space-between; padding: 4px 6px; border: 1px solid #464532; border-radius: 3px; background: #1b1d16; color: #bebba5; font-size: 9px; }
+.class-item b { color: var(--cream); }
 .famine-badge { display: inline-block; margin-left: 5px; padding: 1px 4px; border-radius: 3px; color: #ffe0a6; background: #8a5426; font-size: 9px; }
+.unrest-badge { display: inline-block; margin-left: 5px; padding: 1px 4px; border-radius: 3px; color: #ffd7c9; background: #7e352e; font-size: 9px; }
 .need-list { display: grid; gap: 5px; margin-top: 8px; }
 .need-row { display: grid; grid-template-columns: 35px 1fr 25px; align-items: center; gap: 5px; color: var(--muted); font-size: 9px; }
 .need-row i { overflow: hidden; height: 5px; border-radius: 5px; background: #343827; }
@@ -144,6 +148,24 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .army-item.battle, .army-item.siege { background: #281a16; }
 .army-item.retreat { opacity: .7; }
 .unit-line { margin-top: 8px; }
+.governance-list { display: grid; gap: 5px; }
+.governance-item { width: 100%; padding: 6px 7px; border: 0; border-left: 3px solid; border-radius: 3px; background: #191a14; color: #d6cfb3; text-align: left; cursor: pointer; }
+.governance-item:hover { background: #2c3023; }
+.governance-item.unstable { background: #281a17; }
+.governance-item b, .governance-item span, .governance-item small { display: block; }
+.governance-item b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.governance-item span, .governance-item small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.governance-item > i { position: relative; display: block; height: 4px; margin-top: 5px; border-radius: 3px; background: #393327; }
+.governance-item > i em { position: absolute; left: 0; height: 2px; }
+.governance-item > i .legitimacy { top: 0; background: #79ae76; }
+.governance-item > i .unrest { bottom: 0; background: #cb624d; }
+.policy-controls { display: grid; gap: 6px; }
+.policy-row { display: grid; gap: 3px; color: var(--muted); font-size: 9px; }
+.policy-row > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.policy-choice, .intervention-row button { padding: 4px 3px; border: 1px solid #484a37; border-radius: 3px; background: #24271d; color: #b9b89e; cursor: pointer; font-size: 8px; }
+.policy-choice.active { border-color: #c59a48; background: #765b2b; color: #fff1c5; }
+.intervention-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
+.intervention-row button.danger { border-color: #764137; color: #edaa98; background: #2b1c18; }
 .war-badge { display: inline-block; margin-left: 5px; padding: 1px 4px; border-radius: 3px; color: #ffd8cd; background: #8d3d31; font-size: 9px; }
 .event-log { font-size: 11px; color: #b7baa0; }
 .event { position: relative; margin: 0 0 9px 9px; padding-left: 12px; border-left: 1px solid #4f553d; line-height: 1.45; }
