@@ -29,6 +29,17 @@ const buildingDefs = {
   quarry: { name: "采石场", icon: "◆", wood: 20, stone: 6 },
   barracks: { name: "兵营", icon: "⚔", wood: 32, stone: 18 }
 };
+const professionDefs = {
+  child: { name: "儿童", icon: "◌", color: "#d6c9a8" },
+  laborer: { name: "劳工", icon: "●", color: "#a59c83" },
+  farmer: { name: "农民", icon: "🌾", color: "#d5b64d" },
+  lumberjack: { name: "伐木工", icon: "🪓", color: "#71934a" },
+  miner: { name: "矿工", icon: "⛏", color: "#9b9f9a" },
+  builder: { name: "建筑师", icon: "🔨", color: "#c88750" },
+  merchant: { name: "商人", icon: "⚖", color: "#c99bd5" },
+  healer: { name: "治疗师", icon: "✚", color: "#76c9ad" },
+  soldier: { name: "士兵", icon: "⚔", color: "#dd6b55" }
+};
 const statusLabels = { peace: "和平", alliance: "同盟", war: "战争" };
 const disasterDefs = {
   earthquake: { name: "地震", icon: "🌎", color: "#d7c0a1", radius: 4, duration: 70 },
@@ -163,7 +174,7 @@ function createKingdom(race = "human") {
   const baseName = def.names[raceCount % def.names.length], cycle = Math.floor(raceCount / def.names.length);
   const kingdom = {
     id, name: cycle ? `${baseName}·${cycle + 1}` : baseName, color: kingdomColors[id % kingdomColors.length], race,
-    resources: { food: 70, wood: 45, stone: 18 }, relations: {}, warWeariness: 0
+    resources: { food: 70, wood: 45, stone: 18 }, relations: {}, warWeariness: 0, famine: false, famineLevel: 0, famineSince: null
   };
   kingdoms.push(kingdom);
   for (const other of kingdoms) if (other.id !== id) {
@@ -223,6 +234,7 @@ function generateWorld() {
     }
   }
   populateWildlife(valid);
+  updateProfessions();
   scheduleNextDisaster();
   rebuildWorldIndexes();
   document.getElementById("worldName").textContent = worldNames[randi(0, worldNames.length - 1)];
@@ -237,7 +249,9 @@ function spawnPerson(x, y, kingdom = null, race = null) {
   race ||= getKingdom(kingdom)?.race || "human";
   people.push({
     id: nextPersonId++, x, y, age: randi(16, 35), health: 100, food: rand(45, 90),
-    kingdom, race, village: null, role: "civilian", cooldown: randi(0, 20), attackCooldown: 0, blessed: false, dead: false
+    kingdom, race, village: null, role: "civilian", profession: "laborer", previousProfession: null,
+    happiness: rand(48, 72), needs: { nutrition: 65, shelter: 45, safety: 65, health: 80 },
+    cooldown: randi(0, 20), attackCooldown: 0, blessed: false, dead: false
   });
 }
 
@@ -277,7 +291,7 @@ function createVillage(founder) {
     name: `${["河湾", "绿林", "星丘", "橡木", "晨风", "望海"][randi(0,5)]}村`,
     kingdom: kingdom.id, level: 1, hp: 160,
     buildings: { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0 },
-    buildCooldown: randi(8, 16)
+    buildCooldown: randi(8, 16), workforce: {}, averageHappiness: 60
   };
   villages.push(village); founder.village = village.id;
   claimTerritory(village, 3);
@@ -302,6 +316,128 @@ function ownedTerrainCounts(kingdomId, village) {
   return result;
 }
 
+function professionCounts(citizens) {
+  const counts = Object.fromEntries(Object.keys(professionDefs).map(key => [key, 0]));
+  for (const person of citizens) {
+    const profession = person.role === "soldier" ? "soldier" : professionDefs[person.profession] ? person.profession : "laborer";
+    counts[profession]++;
+  }
+  return counts;
+}
+
+function averageHappiness(citizens) {
+  if (!citizens.length) return 0;
+  let total = 0; for (const person of citizens) total += Number(person.happiness) || 0;
+  return total / citizens.length;
+}
+
+function alliedKingdomCount(kingdom) {
+  let allies = 0; for (const id in kingdom.relations) if (kingdom.relations[id].status === "alliance") allies++;
+  return allies;
+}
+
+function desiredProfessionCounts(village, adults) {
+  const terrain = ownedTerrainCounts(village.kingdom, village), buildings = village.buildings, kingdom = getKingdom(village.kingdom);
+  const infected = peopleOfVillage(village.id).filter(person => person.plague > 0).length;
+  return {
+    farmer: Math.min(adults, Math.max(1, buildings.farm * 2 + (kingdom?.famine ? 1 : 0))),
+    healer: adults >= 7 ? Math.min(2, 1 + (infected >= 4 ? 1 : 0)) : 0,
+    builder: adults >= 3 ? Math.min(3, 1 + Math.floor(adults / 24)) : 0,
+    lumberjack: Math.min(4, buildings.lumber * 2 + (terrain.forest >= 8 ? 1 : 0)),
+    miner: Math.min(4, buildings.quarry * 2 + (terrain.mountain >= 3 ? 1 : 0)),
+    merchant: adults >= 10 ? Math.min(3, 1 + Math.floor(adults / 30)) : 0
+  };
+}
+
+function demobilizePerson(person) {
+  person.role = "civilian";
+  person.profession = professionDefs[person.previousProfession] && person.previousProfession !== "soldier" ? person.previousProfession : "laborer";
+  person.previousProfession = null;
+}
+
+function updateProfessions() {
+  for (const person of people) {
+    if (person.age < 16) { person.profession = "child"; continue; }
+    if (person.role === "soldier") { person.profession = "soldier"; continue; }
+    if (!person.village) person.profession = "laborer";
+  }
+  const priority = ["farmer", "healer", "builder", "lumberjack", "miner", "merchant"];
+  for (const village of villages) {
+    const residents = peopleOfVillage(village.id), adults = residents.filter(person => person.age >= 16 && person.role !== "soldier");
+    const desired = desiredProfessionCounts(village, adults.length), assigned = Object.fromEntries(priority.map(job => [job, 0])), available = [];
+    for (const person of adults) {
+      if (desired[person.profession] > (assigned[person.profession] || 0)) assigned[person.profession]++;
+      else { person.profession = "laborer"; available.push(person); }
+    }
+    for (const job of priority) while (assigned[job] < desired[job] && available.length) {
+      const person = available.shift(); person.profession = job; assigned[job]++;
+    }
+    village.workforce = professionCounts(residents); village.averageHappiness = averageHappiness(residents);
+  }
+}
+
+function performHealerWork(village, healerCount) {
+  if (!healerCount) return;
+  for (const person of peopleOfVillage(village.id)) {
+    const maxHealth = person.blessed ? 140 : person.role === "soldier" ? 110 : 100;
+    if (person.health < maxHealth) person.health = Math.min(maxHealth, person.health + healerCount * .28);
+    if (person.plague > 0) person.plague = Math.max(0, person.plague - healerCount * 7);
+  }
+}
+
+function updateFamineState(kingdom, citizens) {
+  const previous = Boolean(kingdom.famine), reservePerPerson = kingdom.resources.food / Math.max(1, citizens.length), safeReserve = 2.5;
+  kingdom.famineLevel = Number(kingdom.famineLevel) || 0;
+  if (citizens.length && reservePerPerson < safeReserve) kingdom.famineLevel = clamp(kingdom.famineLevel + 2.5 + (safeReserve - reservePerPerson) * 3, 0, 100);
+  else kingdom.famineLevel = Math.max(0, kingdom.famineLevel - Math.max(1.5, (reservePerPerson - safeReserve) * .9));
+  kingdom.famine = kingdom.famineLevel >= 12 || (previous && kingdom.famineLevel >= 5);
+  if (kingdom.famine && !previous) { kingdom.famineSince = Math.floor(year); addEvent(`${kingdom.name}爆发饥荒，居民开始争夺粮食。`); }
+  if (!kingdom.famine && previous) { kingdom.famineSince = null; addEvent(`${kingdom.name}的粮食供应恢复，饥荒宣告结束。`); }
+  if (kingdom.famine) {
+    const severity = kingdom.famineLevel / 100;
+    for (const person of citizens) { person.food = Math.max(0, person.food - .35 - severity); person.happiness = Math.max(0, person.happiness - .4 - severity); }
+  }
+}
+
+function personNearDisaster(person) {
+  for (const disaster of activeDisasters) {
+    const dx = person.x - disaster.x, dy = person.y - disaster.y, radius = disaster.radius + 4;
+    if (dx * dx + dy * dy <= radius * radius) return true;
+  }
+  return false;
+}
+
+function updatePersonWellbeing(person, home, realm) {
+  person.needs ||= { nutrition: person.food, shelter: home ? 70 : 25, safety: 65, health: person.health };
+  const residents = home ? peopleOfVillage(home.id).length : 0, capacity = home ? villageCapacity(home) : 1;
+  const overcrowding = home ? Math.max(0, residents - capacity) / Math.max(1, capacity) : 1;
+  const shelterTarget = home ? clamp(92 - overcrowding * 75, 15, 96) : 22;
+  const atWar = realm ? kingdomAtWar(realm.id) : false, danger = personNearDisaster(person);
+  const safetyTarget = clamp(88 - (atWar ? 24 : 0) - (danger ? 32 : 0) - (person.plague > 0 ? 18 : 0), 5, 96);
+  const maxHealth = person.blessed ? 140 : person.role === "soldier" ? 110 : 100, healthTarget = clamp(person.health / maxHealth * 100, 0, 100);
+  person.needs.nutrition = person.food;
+  person.needs.shelter += (shelterTarget - person.needs.shelter) * .04;
+  person.needs.safety += (safetyTarget - person.needs.safety) * .05;
+  person.needs.health += (healthTarget - person.needs.health) * .05;
+  const employed = !["laborer", "child"].includes(person.profession) ? 6 : person.profession === "laborer" ? -3 : 0;
+  const faminePenalty = realm?.famine ? 15 + (realm.famineLevel || 0) * .22 : 0;
+  const happinessTarget = clamp(person.needs.nutrition * .34 + person.needs.shelter * .22 + person.needs.safety * .22 + person.needs.health * .22 + employed + (person.blessed ? 8 : 0) - faminePenalty, 0, 100);
+  person.happiness += (happinessTarget - person.happiness) * .025;
+  if (person.happiness < 10) person.health -= .015;
+  else if (person.happiness > 82 && !person.plague) person.health = Math.min(maxHealth, person.health + .008);
+}
+
+function professionTileBias(person, x, y, tile, home) {
+  if (person.profession === "farmer") return (tile.fertility || 0) * .9 + (tile.type === "grass" ? .55 : 0);
+  if (person.profession === "lumberjack") return tile.type === "forest" ? 1.4 : 0;
+  if (person.profession === "miner") {
+    let mountains = 0; for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (tileAt(x + ox, y + oy)?.type === "mountain") mountains++;
+    return mountains * .32;
+  }
+  if (["builder", "merchant", "healer"].includes(person.profession) && home) return Math.max(0, 6 - Math.hypot(x - home.x, y - home.y)) * .14;
+  return 0;
+}
+
 function produceResources() {
   for (const kingdom of kingdoms) {
     const realmVillages = villagesOfKingdom(kingdom.id);
@@ -309,20 +445,28 @@ function produceResources() {
     const race = raceDefs[kingdom.race] || raceDefs.human;
     let food = 0, wood = 0, stone = 0;
     for (const village of realmVillages) {
-      const terrain = ownedTerrainCounts(kingdom.id, village), b = village.buildings;
-      food += (terrain.grass * .045 + terrain.forest * .012 + b.farm * 2.8) * race.food;
-      wood += (terrain.forest * .035 + b.lumber * 1.8) * race.wood;
-      stone += (terrain.mountain * .025 + b.quarry * 1.25) * race.stone;
-      village.buildCooldown--;
+      const residents = peopleOfVillage(village.id), jobs = professionCounts(residents), terrain = ownedTerrainCounts(kingdom.id, village), b = village.buildings;
+      const farmerOutput = jobs.farmer * (.55 + b.farm * .22), lumberOutput = jobs.lumberjack * (.48 + b.lumber * .24), minerOutput = jobs.miner * (.4 + b.quarry * .28);
+      food += (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food;
+      wood += (terrain.forest * .018 + lumberOutput + jobs.laborer * .018) * race.wood;
+      stone += (terrain.mountain * .014 + minerOutput) * race.stone;
+      village.buildCooldown -= 1 + jobs.builder * .42;
+      village.hp = Math.min(160 + village.level * 50, village.hp + jobs.builder * .08);
+      performHealerWork(village, jobs.healer);
+      village.workforce = jobs; village.averageHappiness = averageHappiness(residents);
       if (village.buildCooldown <= 0) attemptConstruction(village, peopleOfVillage(village.id).length);
     }
-    let allies = 0; for (const id in kingdom.relations) if (kingdom.relations[id].status === "alliance") allies++;
-    const tradeBonus = 1 + allies * .07, warCost = 1 + Math.min(1, kingdom.warWeariness / 100);
-    kingdom.resources.food = clamp(kingdom.resources.food + food * tradeBonus - realmPeople.length * .16 * warCost, 0, 9999);
+    const allies = alliedKingdomCount(kingdom), merchants = realmVillages.reduce((sum, village) => sum + (village.workforce?.merchant || 0), 0);
+    const tradeBonus = 1 + allies * .055 + merchants * .018, warCost = 1 + Math.min(1, kingdom.warWeariness / 100);
+    const farms = realmVillages.reduce((sum, village) => sum + (village.buildings?.farm || 0), 0);
+    const foodCapacity = 50 + realmPeople.length * 6 + realmVillages.length * 35 + farms * 45;
+    const surplusSpoilage = Math.max(0, kingdom.resources.food - foodCapacity * .72) * .045;
+    kingdom.resources.food = clamp(kingdom.resources.food + food * tradeBonus - realmPeople.length * .16 * warCost - surplusSpoilage, 0, foodCapacity);
     kingdom.resources.wood = clamp(kingdom.resources.wood + wood * tradeBonus, 0, 9999);
     kingdom.resources.stone = clamp(kingdom.resources.stone + stone * tradeBonus, 0, 9999);
     if (kingdom.resources.food <= 1) realmPeople.forEach(p => { p.food = Math.max(0, p.food - .8); });
     else realmPeople.forEach(p => { p.food = Math.min(105, p.food + .35); });
+    updateFamineState(kingdom, realmPeople);
   }
 }
 
@@ -351,7 +495,7 @@ function simulationStep() {
   simulateDisasters();
   regenerateBiomass(); if (ticks % 2 === 0) simulateAnimals(2);
   if (ticks % 10 === 0) produceResources();
-  if (ticks % 45 === 0) updateMilitaryRoles();
+  if (ticks % 45 === 0) { updateMilitaryRoles(); updateProfessions(); }
   if (ticks % 120 === 0) diplomacyStep();
   if (ticks % 250 === 0) attemptColonies();
   if (ticks % 300 === 0) maintainBiodiversity();
@@ -383,7 +527,7 @@ function simulationStep() {
           const t = tileAt(person.x + ox, person.y + oy);
           if (isLand(t) && t.type !== "mountain" && !t.fire) {
             const homeBias = home ? Math.max(0, 5 - Math.hypot(person.x + ox - home.x, person.y + oy - home.y)) * .08 : 0;
-            const score = t.fertility + homeBias + Math.random();
+            const score = t.fertility + homeBias + professionTileBias(person, person.x + ox, person.y + oy, t, home) + Math.random();
             if (score > bestScore) { bestScore = score; bestX = person.x + ox; bestY = person.y + oy; }
           }
         }
@@ -400,9 +544,12 @@ function simulationStep() {
       }
     }
     const home = getVillage(person.village), homePop = home ? peopleOfVillage(home.id).length : 0, realm = getKingdom(person.kingdom);
-    if (home && person.role === "civilian" && person.age > 17 && person.food > 76 && realm?.resources.food > 10 && homePop < villageCapacity(home) && people.length < 800 && Math.random() < .0028 * race.birth) {
+    if (person.age >= 16 && person.profession === "child") person.profession = "laborer";
+    updatePersonWellbeing(person, home, realm);
+    const happinessBirthRate = clamp((person.happiness - 35) / 45, .2, 1.15);
+    if (home && person.role === "civilian" && person.age > 17 && person.food > 76 && person.happiness > 45 && !realm?.famine && realm?.resources.food > 10 && homePop < villageCapacity(home) && people.length < 800 && Math.random() < .0028 * race.birth * happinessBirthRate) {
       spawnPerson(person.x, person.y, person.kingdom, person.race);
-      const baby = people[people.length - 1]; baby.age = 0; baby.village = person.village; baby.food = 60;
+      const baby = people[people.length - 1]; baby.age = 0; baby.village = person.village; baby.food = 60; baby.profession = "child"; baby.happiness = 68; baby.needs = { nutrition: 60, shelter: 78, safety: 72, health: 100 };
       person.food -= 18; realm.resources.food = Math.max(0, realm.resources.food - 1.5);
     }
   }
@@ -723,7 +870,8 @@ function simulateDrought(disaster) {
   }
   if (disaster.age % 30 === 0) for (const village of villages) {
     const force = disasterFalloff(disaster, village.x, village.y); if (!force) continue;
-    const kingdom = getKingdom(village.kingdom); if (kingdom) kingdom.resources.food = Math.max(0, kingdom.resources.food - disaster.intensity * force);
+    const kingdom = getKingdom(village.kingdom), residents = peopleOfVillage(village.id).length;
+    if (kingdom) kingdom.resources.food = Math.max(0, kingdom.resources.food - disaster.intensity * force * (2 + residents * .12));
   }
 }
 
@@ -779,9 +927,9 @@ function updateMilitaryRoles() {
     const barracks = villagesOfKingdom(kingdom.id).reduce((sum, v) => sum + (v.buildings.barracks || 0), 0);
     const desired = kingdomAtWar(kingdom.id) ? Math.min(Math.floor(citizens.length * .38), 2 + barracks * 6) : Math.min(Math.floor(citizens.length * .08), barracks * 2);
     for (let i = 0; i < desired - soldiers.length && i < recruits.length; i++) {
-      recruits[i].role = "soldier"; recruits[i].health = Math.max(recruits[i].health, 110);
+      recruits[i].previousProfession = recruits[i].profession; recruits[i].role = "soldier"; recruits[i].profession = "soldier"; recruits[i].health = Math.max(recruits[i].health, 110);
     }
-    for (let i = desired; i < soldiers.length; i++) soldiers[i].role = "civilian";
+    for (let i = desired; i < soldiers.length; i++) demobilizePerson(soldiers[i]);
   }
 }
 
@@ -800,7 +948,7 @@ function walkToward(person, targetX, targetY) {
 
 function militaryBehavior(person) {
   const enemyIds = new Set(enemyKingdomIds(person.kingdom));
-  if (!enemyIds.size) { person.role = "civilian"; return; }
+  if (!enemyIds.size) { demobilizePerson(person); return; }
   const nearbyEnemy = findNearbyEntity(worldIndex.peopleSpatial, person.x, person.y, 5, candidate => candidate.id !== person.id && enemyIds.has(candidate.kingdom), true);
   if (nearbyEnemy) {
     const distance = Math.hypot(nearbyEnemy.x - person.x, nearbyEnemy.y - person.y);
@@ -836,7 +984,7 @@ function captureVillage(village, newKingdomId) {
   addEvent(`${newKingdom?.name}攻占了${oldKingdom?.name}的${village.name}。`);
   if (!villages.some(v => v.kingdom === oldKingdomId)) {
     oldKingdom.defeated = true;
-    peopleOfKingdom(oldKingdomId).forEach(p => { p.kingdom = newKingdomId; p.role = "civilian"; });
+    peopleOfKingdom(oldKingdomId).forEach(p => { p.kingdom = newKingdomId; if (p.role === "soldier") demobilizePerson(p); });
     addEvent(`${oldKingdom.name}失去最后一座聚落，宣告覆灭。`);
     for (const other of kingdoms) if (other.id !== oldKingdomId && relationBetween(oldKingdomId, other.id)) setRelation(oldKingdomId, other.id, "peace", -20, true);
   }
@@ -939,6 +1087,15 @@ function meteor(gx, gy) {
   indexesReady = false; addEvent("一颗陨星撞击大地，留下炽热的伤痕。"); updateUI();
 }
 
+function workforceHtml(counts) {
+  return Object.entries(professionDefs).filter(([key]) => key !== "child" && (counts[key] || 0) > 0).map(([key, def]) => `<span class="profession-item" style="border-color:${def.color}">${def.icon} ${def.name}<b>${counts[key]}</b></span>`).join("") || `<span class="muted">暂无成年劳动力</span>`;
+}
+
+function needMeter(label, value) {
+  const score = clamp(Math.round(value || 0), 0, 100);
+  return `<div class="need-row"><span>${label}</span><i><b style="width:${score}%"></b></i><em>${score}</em></div>`;
+}
+
 function inspectAt(x, y) {
   selectedKingdomId = null;
   const person = people.find(p => Math.hypot(p.x - x, p.y - y) < 1.5);
@@ -947,14 +1104,14 @@ function inspectAt(x, y) {
   const box = document.getElementById("selectionCard"); box.classList.remove("empty");
   if (person) {
     const k = getKingdom(person.kingdom), v = getVillage(person.village);
-    const race = raceDefs[person.race] || raceDefs.human;
-    box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${person.role === "soldier" ? "士兵" : race.name} #${person.id}</h4><div class="detail-row"><span>年龄</span><b>${Math.floor(person.age)} 岁</b></div><div class="detail-row"><span>种族</span><b>${race.name}</b></div><div class="detail-row"><span>生命</span><b>${Math.floor(person.health)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>身份</span><b>${person.role === "soldier" ? "军队" : "平民"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div>`;
+    const race = raceDefs[person.race] || raceDefs.human, profession = professionDefs[person.role === "soldier" ? "soldier" : person.profession] || professionDefs.laborer;
+    box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${profession.icon} ${profession.name} #${person.id}</h4><div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div><div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
   } else if (animal) {
     const def = animalDefs[animal.species];
     box.innerHTML = `<h4>${def.icon} ${def.name} #${animal.id}</h4><div class="detail-row"><span>年龄</span><b>${animal.age.toFixed(1)} 岁</b></div><div class="detail-row"><span>生命</span><b>${Math.max(0, Math.floor(animal.health))}</b></div><div class="detail-row"><span>饱食度</span><b>${Math.floor(animal.hunger)}%</b></div><div class="detail-row"><span>食性</span><b>${def.diet === "herbivore" ? "草食" : "捕食"}</b></div>`;
   } else if (village) {
     const k = getKingdom(village.kingdom), pop = peopleOfVillage(village.id).length, b = village.buildings;
-    box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>防御</span><b>${Math.round(village.hp)}</b></div><div class="detail-row"><span>规模</span><b>${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="building-grid">${Object.entries(buildingDefs).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div>`;
+    box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(village.averageHappiness || 0)}</b></div><div class="detail-row"><span>防御 / 规模</span><b>${Math.round(village.hp)} · ${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="building-grid">${Object.entries(buildingDefs).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div><h3>劳动力</h3><div class="profession-list">${workforceHtml(village.workforce || {})}</div>`;
   } else {
     const t = tileAt(x, y), labels = { deep:"深海",water:"浅海",sand:"沙滩",grass:"草原",forest:"森林",mountain:"山地",ash:"焦土" };
     box.innerHTML = `<h4>▦ ${labels[t?.type] || "世界之外"}</h4><div class="detail-row"><span>坐标</span><b>${x}, ${y}</b></div><div class="detail-row"><span>肥沃度</span><b>${Math.round((t?.fertility || 0) * 100)}%</b></div><div class="detail-row"><span>植被量</span><b>${Math.round((t?.biomass || 0) * 100)}%</b></div>`;
@@ -972,9 +1129,10 @@ function inspectKingdom(kingdomId) {
     if (raceCounts[citizen.race] !== undefined) raceCounts[citizen.race]++;
   }
   const demographics = Object.entries(raceDefs).map(([key, def]) => `${def.icon}${raceCounts[key]}`).join(" ");
+  const jobs = professionCounts(citizens), happiness = averageHappiness(citizens);
   const relations = Object.entries(kingdom.relations || {}).map(([id, r]) => `${getKingdom(Number(id))?.name || "未知"}：${statusLabels[r.status]}`).join(" · ") || "尚无外交关系";
   box.classList.remove("empty");
-  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}</h4><div class="detail-row"><span>主体种族</span><b>${race.name}</b></div><div class="detail-row"><span>人口 / 军队</span><b>${citizens.length} / ${soldiers}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落</span><b>${realmVillages.length}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><p class="muted">${relations}</p>`;
+  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>主体种族</span><b>${race.name}</b></div><div class="detail-row"><span>人口 / 军队</span><b>${citizens.length} / ${soldiers}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(happiness)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落</span><b>${realmVillages.length}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
 }
 
 function resizeCanvas() {
@@ -1044,6 +1202,7 @@ function render() {
     else if (p.race === "dwarf") ctx.fillRect(sx - r, sy - r * .72, r * 2, r * 1.44);
     else if (p.race === "orc") { ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.PI / 4); ctx.fillRect(-r * .72, -r * .72, r * 1.44, r * 1.44); ctx.restore(); }
     else { ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); }
+    if (m.size > 6) { const job = professionDefs[p.role === "soldier" ? "soldier" : p.profession] || professionDefs.laborer; ctx.fillStyle = job.color; ctx.fillRect(sx - r, sy + r + 1, r * 2, Math.max(1, m.size * .16)); }
     if (p.plague > 0 && m.size > 5) { ctx.strokeStyle = "#c2ed74"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2); ctx.stroke(); }
   }
 }
@@ -1097,6 +1256,8 @@ function updateUI() {
   document.getElementById("eventLog").innerHTML = events.map(e => `<div class="event"><time>纪元 ${e.year}</time>${e.text}</div>`).join("");
   const speciesCounts = animalCounts();
   document.getElementById("ecologyList").innerHTML = Object.entries(animalDefs).map(([species, def]) => `<div class="species-item"><span>${def.icon} ${def.name}</span><b>${speciesCounts[species]}</b></div>`).join("");
+  const jobs = professionCounts(people), worldHappiness = averageHappiness(people), famineCount = activeKingdoms.filter(kingdom => kingdom.famine).length;
+  document.getElementById("societyList").innerHTML = people.length ? `<div class="society-summary"><span>平均幸福<b>${Math.round(worldHappiness)}</b></span><span>饥荒王国<b>${famineCount}</b></span></div><div class="profession-list">${workforceHtml(jobs)}</div>` : `<p class="muted">尚无社会分工</p>`;
   document.getElementById("disasterList").innerHTML = activeDisasters.length ? activeDisasters.map(disaster => {
     const def = disasterDefs[disaster.type], progress = clamp(disaster.duration / Math.max(1, disaster.maxDuration) * 100, 0, 100);
     return `<div class="disaster-item ${disaster.type}"><div><b>${def.icon} ${def.name}</b><span>${disasterLocation(disaster)} · 约 ${(disaster.duration * .02).toFixed(1)} 纪元</span></div><i style="width:${progress}%"></i></div>`;
@@ -1104,7 +1265,7 @@ function updateUI() {
   document.getElementById("kingdomList").innerHTML = activeKingdoms.length ? activeKingdoms.map(k => {
     const citizens = peopleOfKingdom(k.id), pop = citizens.length, towns = villagesOfKingdom(k.id).length, race = raceDefs[k.race] || raceDefs.human;
     let soldiers = 0; for (const citizen of citizens) if (citizen.role === "soldier") soldiers++;
-    return `<button class="kingdom-item" data-kingdom="${k.id}" style="border-color:${k.color}"><b>${race.icon} ${k.name}${kingdomAtWar(k.id) ? '<i class="war-badge">交战</i>' : ""}</b><span>${race.name} · ${pop} 人 · ⚔ ${soldiers} · ${towns} 个聚落</span><span class="resource-line"><i>🌾 ${Math.floor(k.resources.food)}</i><i>🪵 ${Math.floor(k.resources.wood)}</i><i>🪨 ${Math.floor(k.resources.stone)}</i></span></button>`;
+    return `<button class="kingdom-item" data-kingdom="${k.id}" style="border-color:${k.color}"><b>${race.icon} ${k.name}${kingdomAtWar(k.id) ? '<i class="war-badge">交战</i>' : ""}${k.famine ? '<i class="famine-badge">饥荒</i>' : ""}</b><span>${race.name} · ${pop} 人 · ⚔ ${soldiers} · ${towns} 个聚落 · 🙂 ${Math.round(averageHappiness(citizens))}</span><span class="resource-line"><i>🌾 ${Math.floor(k.resources.food)}</i><i>🪵 ${Math.floor(k.resources.wood)}</i><i>🪨 ${Math.floor(k.resources.stone)}</i></span></button>`;
   }).join("") : `<p class="muted">世界尚无文明</p>`;
   const relationOrder = { war: 0, alliance: 1, peace: 2 };
   const sortedRelations = relationPairs.sort((a, b) => relationOrder[a.status] - relationOrder[b.status]);
@@ -1126,7 +1287,7 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 4, savedAt: new Date().toISOString(),
+    version: 5, savedAt: new Date().toISOString(),
     meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount },
     worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1]),
     people, animals, villages, kingdoms, events, activeDisasters, nextPersonId, nextAnimalId, nextVillageId, nextDisasterId, nextDisasterYear,
@@ -1157,7 +1318,16 @@ function normalizeWorldData(sourceVersion = 1) {
   for (const tile of tiles) { tile.biomass ??= tile.type === "forest" ? .8 : tile.type === "grass" ? .6 : tile.type === "sand" ? .1 : 0; }
   for (const kingdom of kingdoms) kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4];
   for (const person of people) {
-    person.race ||= getKingdom(person.kingdom)?.race || "human"; person.role ||= "civilian"; person.attackCooldown ||= 0; person.cooldown ??= randi(0, 10); person.blessed ??= false; person.plague = Math.max(0, Number(person.plague) || 0); person.dead = false;
+    person.race ||= getKingdom(person.kingdom)?.race || "human"; person.role ||= "civilian";
+    person.profession = person.role === "soldier" ? "soldier" : person.age < 16 ? "child" : professionDefs[person.profession] && person.profession !== "soldier" ? person.profession : "laborer";
+    person.previousProfession = professionDefs[person.previousProfession] && person.previousProfession !== "soldier" ? person.previousProfession : null;
+    person.happiness = clamp(Number(person.happiness) || 60, 0, 100);
+    const savedNeeds = person.needs || {};
+    person.needs = {
+      nutrition: clamp(Number(savedNeeds.nutrition) || person.food || 60, 0, 110), shelter: clamp(Number(savedNeeds.shelter) || (person.village ? 70 : 25), 0, 100),
+      safety: clamp(Number(savedNeeds.safety) || 65, 0, 100), health: clamp(Number(savedNeeds.health) || person.health || 80, 0, 100)
+    };
+    person.attackCooldown ||= 0; person.cooldown ??= randi(0, 10); person.blessed ??= false; person.plague = Math.max(0, Number(person.plague) || 0); person.dead = false;
   }
   for (const animal of animals) {
     if (!animalDefs[animal.species]) animal.species = "rabbit";
@@ -1167,11 +1337,13 @@ function normalizeWorldData(sourceVersion = 1) {
   for (const village of villages) {
     village.hp ??= 160; village.buildCooldown ??= randi(6, 12);
     village.buildings = { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, ...(village.buildings || {}) };
+    village.workforce = professionCounts(people.filter(person => !person.dead && person.village === village.id)); village.averageHappiness = Number(village.averageHappiness) || 60;
   }
   for (const kingdom of kingdoms) {
     kingdom.name = cleanText(kingdom.name) || "无名王国";
     kingdom.resources = { food: 70, wood: 45, stone: 18, ...(kingdom.resources || {}) };
     kingdom.relations ||= {}; kingdom.warWeariness ||= 0; kingdom.defeated ||= false;
+    kingdom.famineLevel = clamp(Number(kingdom.famineLevel) || 0, 0, 100); kingdom.famine = Boolean(kingdom.famine && kingdom.famineLevel >= 5); kingdom.famineSince = kingdom.famine ? Number(kingdom.famineSince) || Math.floor(year) : null;
   }
   for (const village of villages) village.name = cleanText(village.name) || "无名聚落";
   for (const event of events) event.text = cleanText(event.text);
@@ -1205,7 +1377,7 @@ function restoreWorld(save, slot = activeSaveSlot) {
   if (!save || !Array.isArray(save.tiles) || !Array.isArray(save.people) || !Array.isArray(save.villages) || !Array.isArray(save.kingdoms)) throw new Error("invalid save");
   if (save.tiles.length !== MAP_W * MAP_H || save.people.length > 5000 || (save.animals?.length || 0) > 5000) throw new Error("unsupported save size");
   tiles = save.tiles.map(t => Array.isArray(t) ? { type: t[0], fertility: t[1], biomass: t[2], fire: t[3], owner: t[4] } : t);
-  people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : [];
+  people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; indexesReady = false;
   year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
   const settings = save.settings || {};
   camera = settings.camera || { x: 0, y: 0, zoom: 1 }; speed = settings.speed || 1; selectedTool = settings.selectedTool || "inspect"; brushSize = settings.brushSize || 2;
