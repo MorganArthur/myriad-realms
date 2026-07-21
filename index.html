@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>万象之境 · 像素世界模拟器</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">✦</span>
+        <div><h1>万象之境</h1><p>一个会自行生长的像素世界</p></div>
+      </div>
+      <div class="world-stats">
+        <span>纪元 <b id="yearStat">1</b></span>
+        <span>人口 <b id="populationStat">0</b></span>
+        <span>聚落 <b id="villageStat">0</b></span>
+        <span>王国 <b id="kingdomStat">0</b></span>
+        <span>生物 <b id="animalStat">0</b></span>
+        <span>战争 <b id="warStat">0</b></span>
+        <span>灾害 <b id="disasterStat">0</b></span>
+      </div>
+      <div class="time-controls">
+        <button id="pauseBtn" class="icon-btn active" title="暂停/继续">▶</button>
+        <button class="speed-btn active" data-speed="1">1×</button>
+        <button class="speed-btn" data-speed="2">2×</button>
+        <button class="speed-btn" data-speed="4">4×</button>
+      </div>
+    </header>
+
+    <section class="workspace">
+      <aside class="toolbox panel">
+        <h2>创世工具</h2>
+        <p class="hint">选择工具，在世界中点击或拖动</p>
+        <div class="tool-grid">
+          <button class="tool active" data-tool="inspect"><span>☝</span>观察</button>
+          <button class="tool" data-tool="land"><span>🌱</span>塑造陆地</button>
+          <button class="tool" data-tool="water"><span>💧</span>化为海洋</button>
+          <button class="tool" data-tool="forest"><span>🌲</span>播种森林</button>
+          <button class="tool" data-tool="human"><span>🧑</span>创造人类</button>
+          <button class="tool" data-tool="elf"><span>🧝</span>创造精灵</button>
+          <button class="tool" data-tool="dwarf"><span>⛏</span>创造矮人</button>
+          <button class="tool" data-tool="orc"><span>👹</span>创造兽人</button>
+          <button class="tool" data-tool="rabbit"><span>🐇</span>放生野兔</button>
+          <button class="tool" data-tool="deer"><span>🦌</span>放生鹿群</button>
+          <button class="tool" data-tool="wolf"><span>🐺</span>放生狼群</button>
+          <button class="tool" data-tool="bear"><span>🐻</span>放生棕熊</button>
+          <button class="tool" data-tool="bless"><span>✨</span>生命祝福</button>
+          <button class="tool danger" data-tool="fire"><span>🔥</span>降下烈火</button>
+          <button class="tool danger" data-tool="meteor"><span>☄</span>召唤陨石</button>
+          <button class="tool disaster-tool" data-tool="earthquake"><span>🌎</span>引发地震</button>
+          <button class="tool disaster-tool" data-tool="flood"><span>🌊</span>召来洪水</button>
+          <button class="tool disaster-tool" data-tool="tornado"><span>🌪</span>释放龙卷风</button>
+          <button class="tool disaster-tool" data-tool="volcano"><span>🌋</span>唤醒火山</button>
+          <button class="tool disaster-tool" data-tool="plague"><span>☣</span>散播瘟疫</button>
+          <button class="tool disaster-tool" data-tool="drought"><span>☀</span>制造干旱</button>
+        </div>
+        <label class="range-row">神力范围 <b id="brushValue">2</b>
+          <input id="brushSize" type="range" min="1" max="6" value="2" />
+        </label>
+        <div class="disaster-controls">
+          <label><input id="randomDisasterToggle" type="checkbox" checked /> 随机天灾</label>
+          <label>频率
+            <select id="disasterFrequency">
+              <option value="rare">稀少</option>
+              <option value="normal" selected>正常</option>
+              <option value="frequent">频繁</option>
+            </select>
+          </label>
+        </div>
+        <div class="separator"></div>
+        <button id="newWorldBtn" class="wide-btn">生成新世界</button>
+        <button id="saveBtn" class="wide-btn secondary">快速保存</button>
+        <button id="loadBtn" class="wide-btn secondary">世界档案</button>
+      </aside>
+
+      <section class="world-wrap">
+        <canvas id="worldCanvas" width="960" height="640" aria-label="模拟世界地图"></canvas>
+        <div class="canvas-help">滚轮缩放 · 右键拖动画面 · 左键使用神力</div>
+        <div id="toast" class="toast"></div>
+      </section>
+
+      <aside class="inspector panel">
+        <h2>世界纪事</h2>
+        <div id="selectionCard" class="selection-card empty">
+          <div class="selection-icon">◌</div>
+          <p>点击地图中的居民、聚落或土地查看详情</p>
+        </div>
+        <h3>生态概览</h3>
+        <div id="ecologyList" class="ecology-list"></div>
+        <h3>灾害预警</h3>
+        <div id="disasterList" class="disaster-list"><p class="muted disaster-calm">世界暂时平静</p></div>
+        <h3>文明概览</h3>
+        <div id="kingdomList" class="kingdom-list"><p class="muted">世界尚无文明</p></div>
+        <h3>外交态势</h3>
+        <div id="diplomacyList" class="diplomacy-list"><p class="muted">尚未建立国家关系</p></div>
+        <h3>纪元记录</h3>
+        <div id="eventLog" class="event-log"></div>
+      </aside>
+    </section>
+
+    <footer>
+      <span id="worldName">无名世界</span>
+      <span id="saveStatus">尚未保存</span>
+      <span>原创沙盒原型 · 世界的一切都在实时演化</span>
+    </footer>
+  </main>
+
+  <section id="archiveModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="archiveTitle" hidden>
+    <div class="archive-modal">
+      <div class="modal-title"><div><h2 id="archiveTitle">世界档案馆</h2><p>三个手动槽位与一个自动存档</p></div><button id="closeArchiveBtn" class="modal-close" aria-label="关闭">×</button></div>
+      <div id="saveSlots" class="save-slots"></div>
+      <div class="archive-options">
+        <label><input id="autoSaveToggle" type="checkbox" checked /> 每 5 个纪元自动保存</label>
+        <div><button id="exportSaveBtn" class="wide-btn secondary small">导出当前世界</button><label class="wide-btn secondary small file-label">导入存档<input id="importSaveInput" type="file" accept="application/json,.json" /></label></div>
+      </div>
+    </div>
+  </section>
+  <script src="game.js"></script>
+</body>
+</html>
