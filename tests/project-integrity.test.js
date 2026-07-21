@@ -22,10 +22,17 @@ test("代码引用的 DOM id 全部存在且页面 id 唯一", () => {
   assert.equal(declaredSet.size, declared.length);
 });
 
-test("新版档案包含目标历史且保持显式版本", () => {
+test("新版档案包含文化历史且保持显式版本", () => {
   const version = Number(game.match(/version:\s*(\d+),\s*savedAt/)?.[1]);
-  assert.ok(version >= 11);
-  for (const field of ["chronicle", "worldStats", "worldProgress"]) assert.match(game, new RegExp(`\\b${field}\\b`));
+  assert.ok(version >= 12);
+  for (const field of ["chronicle", "worldStats", "worldProgress", "culture", "technology"]) assert.match(game, new RegExp(`\\b${field}\\b`));
+});
+
+test("文化科技与六个核心模拟系统相连", () => {
+  for (const technology of ["agriculture", "engineering", "metallurgy", "navigation", "medicine", "administration"]) assert.match(game, new RegExp(`\\b${technology}\\b`));
+  assert.match(game, /cultureTechnologyStep\(\)/);
+  assert.match(game, /exchangeCultures\(/);
+  assert.match(game, /data-tech-focus/);
 });
 
 test("性能保护保持单次索引重建与自适应生态批处理", () => {

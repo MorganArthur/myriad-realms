@@ -169,6 +169,30 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .governance-item > i em { position: absolute; left: 0; height: 2px; }
 .governance-item > i .legitimacy { top: 0; background: #79ae76; }
 .governance-item > i .unrest { bottom: 0; background: #cb624d; }
+.culture-list { display: grid; gap: 5px; }
+.culture-item { width: 100%; padding: 7px; border: 0; border-left: 3px solid; border-radius: 3px; background: #191a17; color: #d7d0b6; text-align: left; cursor: pointer; }
+.culture-item:hover { background: #2b3026; }
+.culture-item b, .culture-item span, .culture-item small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.culture-item b { font-size: 9px; }
+.culture-item span, .culture-item small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.culture-item > i { display: block; overflow: hidden; height: 3px; margin-top: 5px; border-radius: 2px; background: #363627; }
+.culture-item > i em { display: block; height: 100%; background: linear-gradient(90deg, #708d58, #d1af56); }
+.culture-values { display: grid; gap: 4px; margin-top: 7px; }
+.culture-value { display: grid; grid-template-columns: 52px 1fr 22px; align-items: center; gap: 5px; color: var(--muted); font-size: 8px; }
+.culture-value i { overflow: hidden; height: 4px; border-radius: 3px; background: #34372a; }
+.culture-value i em { display: block; height: 100%; background: linear-gradient(90deg, #718d58, #c7a95b); }
+.culture-value b { color: var(--cream); text-align: right; font-size: 8px; }
+.tradition-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.tradition-chip { padding: 4px 6px; border: 1px solid #625d3c; border-radius: 10px; background: #242419; color: #d8c991; font-size: 8px; }
+.technology-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.technology-choice { min-width: 0; padding: 5px; border: 1px solid #454938; border-radius: 3px; background: #1b1d17; color: #c5c5ae; text-align: left; cursor: pointer; }
+.technology-choice:hover { border-color: #9d8952; }
+.technology-choice.active { border-color: #c7a84e; background: #302b18; }
+.technology-choice.maxed { border-color: #4e714b; background: #182019; }
+.technology-choice b, .technology-choice span, .technology-choice small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.technology-choice b { font-size: 8px; }
+.technology-choice span { margin-top: 2px; color: #dfbf60; font-size: 8px; letter-spacing: 1px; }
+.technology-choice small { margin-top: 2px; color: var(--muted); font-size: 7px; }
 .policy-controls { display: grid; gap: 6px; }
 .policy-row { display: grid; gap: 3px; color: var(--muted); font-size: 9px; }
 .policy-row > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }

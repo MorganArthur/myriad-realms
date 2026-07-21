@@ -83,6 +83,32 @@ const socialClassDefs = {
   elite: { name: "权贵", icon: "♛" }, merchant: { name: "商贾", icon: "⚖" }, artisan: { name: "匠师", icon: "◆" },
   peasant: { name: "平民", icon: "●" }, warrior: { name: "军户", icon: "⚔" }, dependent: { name: "眷属", icon: "◌" }
 };
+const cultureValueDefs = {
+  community: { name: "共同体", icon: "◉" }, nature: { name: "自然", icon: "❧" }, craft: { name: "技艺", icon: "◆" },
+  valor: { name: "尚武", icon: "⚔" }, commerce: { name: "商贸", icon: "⚖" }, faith: { name: "信仰", icon: "✦" }
+};
+const cultureEthosDefs = {
+  civic: { name: "城邦精神", icon: "🏛", research: 1.08, values: { community: 72, nature: 38, craft: 55, valor: 42, commerce: 58, faith: 45 } },
+  harmony: { name: "自然和谐", icon: "🌿", research: 1.04, values: { community: 62, nature: 82, craft: 46, valor: 30, commerce: 38, faith: 64 } },
+  forge: { name: "炉火传承", icon: "⚒", research: 1.12, values: { community: 58, nature: 30, craft: 86, valor: 56, commerce: 52, faith: 40 } },
+  warrior: { name: "氏族荣誉", icon: "🛡", research: .94, values: { community: 70, nature: 45, craft: 40, valor: 88, commerce: 30, faith: 48 } }
+};
+const technologyDefs = {
+  agriculture: { name: "农耕学", icon: "🌾", costs: [12, 34, 70], effect: "每级提高 10% 粮食产量与 6% 储粮能力" },
+  engineering: { name: "工程学", icon: "🏗", costs: [14, 38, 78], effect: "每级提高建筑耐久并降低建造消耗" },
+  metallurgy: { name: "冶金术", icon: "⚔", costs: [16, 42, 86], effect: "每级提高军队攻击与攻城能力" },
+  navigation: { name: "航运术", icon: "⚓", costs: [14, 40, 82], effect: "每级提高商队运量与移动速度" },
+  medicine: { name: "医药学", icon: "✚", costs: [15, 40, 80], effect: "每级提高治疗效率并降低染疫概率" },
+  administration: { name: "行政学", icon: "📜", costs: [13, 36, 74], effect: "每级提高税收、合法性与科研组织力" }
+};
+const traditionDefs = {
+  harvest_rites: { name: "丰收礼俗", icon: "🌾", effect: "粮食产量 +8%" },
+  forest_kin: { name: "林地守望", icon: "🌲", effect: "木材产量 +8%" },
+  stone_lore: { name: "石工秘传", icon: "◆", effect: "石料产量与建筑耐久 +8%" },
+  warrior_code: { name: "勇士信条", icon: "⚔", effect: "军队攻击与士气 +6%" },
+  merchant_guilds: { name: "商旅行会", icon: "⚖", effect: "商队运量 +10%" },
+  healer_orders: { name: "济世教团", icon: "✚", effect: "治疗效率 +12%" }
+};
 const seasonDefs = {
   spring: { name: "春", icon: "🌱", temperature: 16, rainfall: .72, growth: 1.35, crops: 1.18, reproduction: 1.3, tint: "#8fcf6a12" },
   summer: { name: "夏", icon: "☀", temperature: 27, rainfall: .48, growth: 1, crops: 1.04, reproduction: 1, tint: "#e5c05a0b" },
@@ -119,7 +145,9 @@ const achievementDefs = {
   first_war: { name: "兵戈年代", icon: "⚔", description: "见证一场战争爆发", points: 10, unlocked: () => worldStats.warsStarted >= 1 || hasRelationStatus("war") },
   survivor: { name: "劫后余生", icon: "🛡", description: "完整经历一次天灾", points: 10, unlocked: () => worldStats.disastersSurvived >= 1 },
   rebellion: { name: "旧邦新生", icon: "✊", description: "见证一个叛乱政权诞生", points: 15, unlocked: () => worldStats.rebellions >= 1 },
-  century: { name: "百年史诗", icon: "📜", description: "世界延续到纪元 100", points: 25, unlocked: () => year >= 100 }
+  century: { name: "百年史诗", icon: "📜", description: "世界延续到纪元 100", points: 25, unlocked: () => year >= 100 },
+  first_discovery: { name: "知识火花", icon: "💡", description: "任意文明取得第一项科技", points: 10, unlocked: () => kingdoms.some(kingdom => totalTechnologyLevel(kingdom) >= 1) },
+  renaissance: { name: "文明盛世", icon: "🌟", description: "任意文明累计达到 8 级科技", points: 25, unlocked: () => kingdoms.some(kingdom => totalTechnologyLevel(kingdom) >= 8) }
 };
 const worldGoalDefs = {
   settlement_network: { name: "拓土成邦", description: "建立 6 个聚落", icon: "🏘", target: 6, points: 20, value: () => villages.length },
@@ -163,6 +191,149 @@ function createWorldStats() {
 }
 
 function createWorldProgress() { return { achievements: {}, completedGoals: {}, renown: 0 }; }
+
+function createCultureState(race, kingdomName = "无名文明") {
+  const ethos = { human: "civic", elf: "harmony", dwarf: "forge", orc: "warrior" }[race] || "civic", def = cultureEthosDefs[ethos];
+  return { name: `${kingdomName}传统`, ethos, values: { ...def.values }, traditions: [], influence: 10, exchanges: 0 };
+}
+
+function createTechnologyState(race) {
+  const focus = { human: "administration", elf: "medicine", dwarf: "engineering", orc: "metallurgy" }[race] || "agriculture";
+  return { levels: Object.fromEntries(Object.keys(technologyDefs).map(id => [id, 0])), research: 0, focus, researchRate: 0, lastFocusYear: 1, focusLockedUntil: 0 };
+}
+
+function technologyLevel(kingdom, technology) { return clamp(Number(kingdom?.technology?.levels?.[technology]) || 0, 0, 3); }
+function totalTechnologyLevel(kingdom) { return Object.keys(technologyDefs).reduce((sum, technology) => sum + technologyLevel(kingdom, technology), 0); }
+function hasTradition(kingdom, tradition) { return Boolean(kingdom?.culture?.traditions?.includes(tradition)); }
+function currentTechnologyCost(kingdom, technology = kingdom?.technology?.focus) {
+  const def = technologyDefs[technology], level = technologyLevel(kingdom, technology);
+  return def && level < 3 ? def.costs[level] : null;
+}
+
+function normalizeCultureTechnology(kingdom) {
+  const fallbackCulture = createCultureState(kingdom.race, kingdom.name), savedCulture = kingdom.culture || {};
+  kingdom.culture = { ...fallbackCulture, ...savedCulture };
+  kingdom.culture.ethos = cultureEthosDefs[kingdom.culture.ethos] ? kingdom.culture.ethos : fallbackCulture.ethos;
+  kingdom.culture.name = cleanText(kingdom.culture.name) || fallbackCulture.name;
+  kingdom.culture.values = { ...fallbackCulture.values, ...(savedCulture.values || {}) };
+  for (const value of Object.keys(cultureValueDefs)) kingdom.culture.values[value] = clamp(Number(kingdom.culture.values[value]) || fallbackCulture.values[value], 0, 100);
+  kingdom.culture.traditions = [...new Set(Array.isArray(savedCulture.traditions) ? savedCulture.traditions.filter(id => traditionDefs[id]) : [])];
+  kingdom.culture.influence = Math.max(0, Number(kingdom.culture.influence) || 10); kingdom.culture.exchanges = Math.max(0, Number(kingdom.culture.exchanges) || 0);
+  const fallbackTechnology = createTechnologyState(kingdom.race), savedTechnology = kingdom.technology || {};
+  kingdom.technology = { ...fallbackTechnology, ...savedTechnology, levels: { ...fallbackTechnology.levels, ...(savedTechnology.levels || {}) } };
+  for (const technology of Object.keys(technologyDefs)) kingdom.technology.levels[technology] = clamp(Math.floor(Number(kingdom.technology.levels[technology]) || 0), 0, 3);
+  kingdom.technology.focus = technologyDefs[kingdom.technology.focus] ? kingdom.technology.focus : fallbackTechnology.focus;
+  kingdom.technology.research = Math.max(0, Number(kingdom.technology.research) || 0); kingdom.technology.researchRate = Math.max(0, Number(kingdom.technology.researchRate) || 0);
+  kingdom.technology.lastFocusYear = Number(kingdom.technology.lastFocusYear) || Math.floor(year); kingdom.technology.focusLockedUntil = Number(kingdom.technology.focusLockedUntil) || 0;
+}
+
+function chooseResearchFocus(kingdom) {
+  const candidates = Object.keys(technologyDefs).filter(id => technologyLevel(kingdom, id) < 3); if (!candidates.length) return kingdom.technology.focus;
+  if (kingdom.famine && candidates.includes("agriculture")) return "agriculture";
+  if (kingdomAtWar(kingdom.id) && candidates.includes("metallurgy")) return "metallurgy";
+  if (peopleOfKingdom(kingdom.id).some(person => person.plague > 0) && candidates.includes("medicine")) return "medicine";
+  if ((kingdom.unrest || 0) > 50 && candidates.includes("administration")) return "administration";
+  const docks = villagesOfKingdom(kingdom.id).reduce((sum, village) => sum + buildingCount(village, "dock"), 0);
+  if (docks && candidates.includes("navigation")) return "navigation";
+  if (candidates.includes(kingdom.technology.focus)) return kingdom.technology.focus;
+  return candidates.sort((a, b) => technologyLevel(kingdom, a) - technologyLevel(kingdom, b) || technologyDefs[a].costs[technologyLevel(kingdom, a)] - technologyDefs[b].costs[technologyLevel(kingdom, b)])[0];
+}
+
+function setResearchFocus(kingdomId, technology, playerAction = false) {
+  const kingdom = getKingdom(kingdomId); if (!kingdom || !technologyDefs[technology] || technologyLevel(kingdom, technology) >= 3) return false;
+  kingdom.technology.focus = technology; kingdom.technology.lastFocusYear = Math.floor(year);
+  if (playerAction) kingdom.technology.focusLockedUntil = year + 10;
+  addEvent(`${kingdom.name}将研究方向调整为“${technologyDefs[technology].name}”。`);
+  if (playerAction) { showToast(`${kingdom.name}开始研究${technologyDefs[technology].name}`); updateUI(); }
+  return true;
+}
+
+function syncKingdomStructureDurability(kingdom) {
+  const multiplier = 1 + technologyLevel(kingdom, "engineering") * .1 + (hasTradition(kingdom, "stone_lore") ? .08 : 0);
+  for (const village of villagesOfKingdom(kingdom.id)) for (const structure of village.structures || []) {
+    const expected = Math.round(buildingDefs[structure.type].maxHp * multiplier), integrity = structure.hp / Math.max(1, structure.maxHp);
+    if (structure.maxHp !== expected) { structure.maxHp = expected; structure.hp = clamp(expected * integrity, 1, expected); }
+  }
+}
+
+function unlockTradition(kingdom, tradition) {
+  if (hasTradition(kingdom, tradition)) return;
+  kingdom.culture.traditions.push(tradition); addEvent(`${traditionDefs[tradition].icon} ${kingdom.name}形成文化传统“${traditionDefs[tradition].name}”。`);
+  if (tradition === "stone_lore") syncKingdomStructureDurability(kingdom);
+}
+
+function updateCultureTraditions(kingdom, context) {
+  if (context.farms >= 3 || technologyLevel(kingdom, "agriculture") >= 2) unlockTradition(kingdom, "harvest_rites");
+  if ((kingdom.race === "elf" && context.forests >= 8) || context.forests >= 28) unlockTradition(kingdom, "forest_kin");
+  if ((kingdom.race === "dwarf" && context.quarries >= 1) || context.quarries >= 2 || technologyLevel(kingdom, "engineering") >= 2) unlockTradition(kingdom, "stone_lore");
+  if (context.soldiers >= 4 || (kingdomAtWar(kingdom.id) && technologyLevel(kingdom, "metallurgy") >= 1)) unlockTradition(kingdom, "warrior_code");
+  if (context.markets + context.docks >= 3 || technologyLevel(kingdom, "navigation") >= 2) unlockTradition(kingdom, "merchant_guilds");
+  if (context.temples >= 2 || technologyLevel(kingdom, "medicine") >= 2) unlockTradition(kingdom, "healer_orders");
+}
+
+function cultureContext(kingdom) {
+  const citizens = peopleOfKingdom(kingdom.id), realmVillages = villagesOfKingdom(kingdom.id), jobs = professionCounts(citizens), countBuildings = type => realmVillages.reduce((sum, village) => sum + buildingCount(village, type), 0);
+  return {
+    citizens, realmVillages, jobs, farms: countBuildings("farm"), quarries: countBuildings("quarry"), markets: countBuildings("market"), docks: countBuildings("dock"),
+    temples: countBuildings("temple"), barracks: countBuildings("barracks"), structures: realmVillages.reduce((sum, village) => sum + (village.structures?.length || 0), 0), soldiers: jobs.soldier || 0,
+    forests: tiles.reduce((sum, tile) => sum + (tile.owner === kingdom.id && tile.type === "forest" ? 1 : 0), 0)
+  };
+}
+
+function seedLegacyCultureTechnology(kingdom) {
+  const context = cultureContext(kingdom), ageTier = year >= 80 ? 2 : year >= 18 ? 1 : 0;
+  if (ageTier) {
+    kingdom.technology.levels.agriculture = Math.min(ageTier, Math.max(1, Math.floor(context.farms / 3)));
+    kingdom.technology.levels.engineering = Math.min(ageTier, Math.max(1, Math.floor(context.structures / 28)));
+    kingdom.technology.levels.metallurgy = Math.min(ageTier, Math.max(context.barracks ? 1 : 0, kingdomAtWar(kingdom.id) ? 1 : 0));
+    kingdom.technology.levels.navigation = Math.min(ageTier, context.docks ? 1 + Number(context.docks >= 3) : 0);
+    kingdom.technology.levels.medicine = Math.min(ageTier, context.temples ? 1 + Number(context.temples >= 3) : 0);
+    kingdom.technology.levels.administration = Math.min(ageTier, context.realmVillages.length >= 2 ? 1 + Number(context.realmVillages.length >= 6) : 1);
+  }
+  kingdom.culture.influence = Math.max(kingdom.culture.influence, 10 + Math.floor(year * .18) + context.citizens.length * .15 + context.realmVillages.length * 2);
+  updateCultureTraditions(kingdom, context); syncKingdomStructureDurability(kingdom);
+}
+
+function cultureTechnologyStep() {
+  for (const kingdom of kingdoms) {
+    if (kingdom.defeated) continue; normalizeCultureTechnology(kingdom);
+    const context = cultureContext(kingdom), { citizens, realmVillages, jobs } = context; if (!citizens.length && !realmVillages.length) continue;
+    const ethos = cultureEthosDefs[kingdom.culture.ethos], administration = technologyLevel(kingdom, "administration");
+    const researchRate = (1 + citizens.filter(person => person.age >= 16).length * .14 + (jobs.builder || 0) * .22 + (jobs.healer || 0) * .28 + (jobs.merchant || 0) * .16 + realmVillages.length * .3 + context.temples * .18 + context.markets * .12) * ethos.research * (1 + administration * .08);
+    kingdom.technology.researchRate = researchRate; kingdom.technology.research += researchRate;
+    if (technologyLevel(kingdom, kingdom.technology.focus) >= 3 || (year >= kingdom.technology.focusLockedUntil && year - kingdom.technology.lastFocusYear >= 7)) {
+      const nextFocus = chooseResearchFocus(kingdom);
+      if (nextFocus !== kingdom.technology.focus) setResearchFocus(kingdom.id, nextFocus); else kingdom.technology.lastFocusYear = Math.floor(year);
+    }
+    let focus = kingdom.technology.focus, cost = currentTechnologyCost(kingdom, focus);
+    if (cost && kingdom.technology.research >= cost) {
+      kingdom.technology.research -= cost; kingdom.technology.levels[focus]++; kingdom.technology.lastDiscoveryYear = Math.floor(year);
+      addEvent(`${technologyDefs[focus].icon} ${kingdom.name}掌握了${technologyDefs[focus].name} ${kingdom.technology.levels[focus]}级。`);
+      if (focus === "engineering") syncKingdomStructureDurability(kingdom);
+      if (kingdom.technology.levels[focus] >= 3) kingdom.technology.focus = chooseResearchFocus(kingdom);
+    }
+    const values = kingdom.culture.values, targets = {
+      community: 48 + (kingdom.policies?.welfare === "generous" ? 22 : 0) + (kingdom.government === "council" ? 12 : 0),
+      nature: 32 + Math.min(42, context.forests * .6) + (kingdom.race === "elf" ? 16 : 0),
+      craft: 38 + Math.min(42, (jobs.builder + jobs.miner) * 5 + technologyLevel(kingdom, "engineering") * 7),
+      valor: 30 + Math.min(55, context.soldiers * 5 + (kingdomAtWar(kingdom.id) ? 24 : 0)),
+      commerce: 32 + Math.min(55, jobs.merchant * 7 + context.markets * 8 + context.docks * 7),
+      faith: 35 + Math.min(50, context.temples * 12 + (kingdom.policies?.welfare === "generous" ? 8 : 0))
+    };
+    for (const value of Object.keys(cultureValueDefs)) values[value] = clamp(values[value] + (targets[value] - values[value]) * .06, 0, 100);
+    kingdom.culture.influence += (citizens.length * .025 + realmVillages.length * .45 + context.temples * .3 + totalTechnologyLevel(kingdom) * .12) * (1 + administration * .04);
+    updateCultureTraditions(kingdom, context);
+  }
+}
+
+function exchangeCultures(a, b) {
+  if (!a || !b || a.id === b.id) return;
+  for (const value of Object.keys(cultureValueDefs)) {
+    const average = (a.culture.values[value] + b.culture.values[value]) / 2;
+    a.culture.values[value] += (average - a.culture.values[value]) * .025; b.culture.values[value] += (average - b.culture.values[value]) * .025;
+  }
+  a.culture.exchanges++; b.culture.exchanges++; a.culture.influence += .5; b.culture.influence += .5;
+}
 
 function structureTotal() {
   let total = 0;
@@ -384,7 +555,8 @@ function createKingdom(race = "human") {
     id, name: cycle ? `${baseName}·${cycle + 1}` : baseName, color: kingdomColors[id % kingdomColors.length], race,
     resources: { food: 70, wood: 45, stone: 18 }, relations: {}, warWeariness: 0, famine: false, famineLevel: 0, famineSince: null,
     government, policies: { tax: "standard", welfare: "balanced", military: race === "orc" ? "conquest" : "defense" }, treasury: 35,
-    legitimacy: 68, unrest: 8, welfareCoverage: 1, lastTaxRevenue: 0, lastPolicyYear: 1, lastReformYear: 0, policyLockedUntil: 0, rebellionCooldownUntil: 0
+    legitimacy: 68, unrest: 8, welfareCoverage: 1, lastTaxRevenue: 0, lastPolicyYear: 1, lastReformYear: 0, policyLockedUntil: 0, rebellionCooldownUntil: 0,
+    culture: createCultureState(race, cycle ? `${baseName}·${cycle + 1}` : baseName), technology: createTechnologyState(race)
   };
   kingdoms.push(kingdom);
   for (const other of kingdoms) if (other.id !== id) {
@@ -497,7 +669,8 @@ function buildingCount(village, type) {
 }
 
 function villageMaxHp(village) {
-  return 160 + village.level * 50 + buildingCount(village, "wall") * 24;
+  const kingdom = getKingdom(village.kingdom), durability = 1 + technologyLevel(kingdom, "engineering") * .08 + (hasTradition(kingdom, "stone_lore") ? .06 : 0);
+  return Math.round((160 + village.level * 50 + buildingCount(village, "wall") * 24) * durability);
 }
 
 function adjacentWaterCount(x, y) {
@@ -546,7 +719,8 @@ function addStructureEntity(village, type, site = null) {
   const def = buildingDefs[type]; if (!def) return null;
   site ||= findStructureSite(village, type); if (!site) return null;
   village.structures ||= [];
-  const structure = { id: nextStructureId++, type, x: site.x, y: site.y, hp: def.maxHp, maxHp: def.maxHp, builtYear: Math.floor(year) };
+  const kingdom = getKingdom(village.kingdom), durability = 1 + technologyLevel(kingdom, "engineering") * .1 + (hasTradition(kingdom, "stone_lore") ? .08 : 0), maxHp = Math.round(def.maxHp * durability);
+  const structure = { id: nextStructureId++, type, x: site.x, y: site.y, hp: maxHp, maxHp, builtYear: Math.floor(year) };
   village.structures.push(structure);
   worldStats.buildingsConstructed++;
   const tile = tileAt(Math.round(site.x), Math.round(site.y)); if (tile && isLand(tile) && tile.owner < 0) tile.owner = village.kingdom;
@@ -684,6 +858,8 @@ function triggerRebellion(parent, village) {
   const dominantRace = Object.entries(raceTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || parent.race;
   const rebel = createKingdom(dominantRace), rootName = village.name.replace(/[村镇城]$/, "");
   rebel.name = `${rootName}${dominantRace === "orc" ? "战团" : "自由领"}`; rebel.government = dominantRace === "orc" ? "clan" : "republic";
+  rebel.culture.name = `${rootName}新传统`; rebel.culture.values = Object.fromEntries(Object.keys(cultureValueDefs).map(value => [value, clamp(parent.culture.values[value] * .72 + rebel.culture.values[value] * .28, 0, 100)])); rebel.culture.traditions = parent.culture.traditions.slice(0, 3);
+  rebel.technology.levels = Object.fromEntries(Object.keys(technologyDefs).map(technology => [technology, Math.max(0, technologyLevel(parent, technology) - (Math.random() < .25 ? 1 : 0))]));
   rebel.policies = { tax: "low", welfare: "balanced", military: "defense" }; rebel.legitimacy = 58; rebel.unrest = 22; rebel.rebellionCooldownUntil = year + 10;
   for (const resource of ["food", "wood", "stone"]) {
     const seized = Math.max(0, (parent.resources[resource] || 0) * .18); parent.resources[resource] -= seized; rebel.resources[resource] = seized;
@@ -719,13 +895,14 @@ function governanceStep() {
     const classes = socialClassCounts(citizens), government = governmentOf(kingdom), tax = policyOf(kingdom, "tax"), welfare = policyOf(kingdom, "welfare"), military = policyOf(kingdom, "military");
     const adults = citizens.length - classes.dependent, markets = realmVillages.reduce((sum, village) => sum + buildingCount(village, "market"), 0);
     const economicBase = adults * .55 + classes.merchant * 1.8 + classes.artisan * .7 + markets * 2.2;
-    kingdom.lastTaxRevenue = economicBase * tax.rate * 4 * government.tax; kingdom.treasury = clamp((kingdom.treasury || 0) + kingdom.lastTaxRevenue, 0, 99999);
+    const administrationBonus = 1 + technologyLevel(kingdom, "administration") * .08;
+    kingdom.lastTaxRevenue = economicBase * tax.rate * 4 * government.tax * administrationBonus; kingdom.treasury = clamp((kingdom.treasury || 0) + kingdom.lastTaxRevenue, 0, 99999);
     const welfareCost = citizens.length * welfare.cost * government.welfare, paid = Math.min(kingdom.treasury, welfareCost);
     kingdom.treasury -= paid; kingdom.welfareCoverage = welfareCost > 0 ? paid / welfareCost : 1;
     const happiness = averageHappiness(citizens), lowCoverage = (1 - kingdom.welfareCoverage) * 24;
     const unrestTarget = clamp(Math.max(0, 56 - happiness) * 1.12 + (kingdom.famineLevel || 0) * .5 + (kingdom.warWeariness || 0) * .27 + tax.unrest + welfare.unrest + lowCoverage + (military.happiness < 0 && !kingdomAtWar(kingdom.id) ? -military.happiness : 0) - government.stability, 0, 100);
     kingdom.unrest = clamp((kingdom.unrest || 0) + (unrestTarget - (kingdom.unrest || 0)) * .14, 0, 100);
-    const treasurySecurity = Math.min(10, kingdom.treasury / Math.max(1, citizens.length) * .45), legitimacyTarget = clamp(happiness * .68 + government.stability + treasurySecurity - kingdom.unrest * .32 - (kingdom.warWeariness || 0) * .12, 0, 100);
+    const treasurySecurity = Math.min(10, kingdom.treasury / Math.max(1, citizens.length) * .45), legitimacyTarget = clamp(happiness * .68 + government.stability + treasurySecurity + technologyLevel(kingdom, "administration") * 2 - kingdom.unrest * .32 - (kingdom.warWeariness || 0) * .12, 0, 100);
     kingdom.legitimacy = clamp((kingdom.legitimacy || 60) + (legitimacyTarget - (kingdom.legitimacy || 60)) * .1, 0, 100);
     const capital = [...realmVillages].sort((a, b) => peopleOfVillage(b.id).length - peopleOfVillage(a.id).length)[0];
     for (const village of realmVillages) {
@@ -793,7 +970,8 @@ function updateProfessions() {
 
 function performHealerWork(village, healerCount) {
   if (!healerCount) return;
-  healerCount += buildingCount(village, "temple") * .35;
+  const kingdom = getKingdom(village.kingdom), medicine = technologyLevel(kingdom, "medicine"), multiplier = 1 + medicine * .14 + (hasTradition(kingdom, "healer_orders") ? .12 : 0);
+  healerCount = (healerCount + buildingCount(village, "temple") * .35) * multiplier;
   for (const person of peopleOfVillage(village.id)) {
     const maxHealth = person.blessed ? 140 : person.role === "soldier" ? 110 : 100;
     if (person.health < maxHealth) person.health = Math.min(maxHealth, person.health + healerCount * .28);
@@ -991,7 +1169,9 @@ function dispatchCaravans() {
   for (const route of tradeRoutes) {
     if (route.status !== "active" || ticks - (route.lastDispatchTick || 0) < 65 || caravans.some(caravan => caravan.routeId === route.id)) continue;
     const a = getVillage(route.fromVillage), b = getVillage(route.toVillage); if (!a || !b) continue;
-    const maximum = 10 + (buildingCount(a, "warehouse") + buildingCount(b, "warehouse")) * 7 + (buildingCount(a, "market") + buildingCount(b, "market")) * 2;
+    const tradeKnowledge = (technologyLevel(getKingdom(a.kingdom), "navigation") + technologyLevel(getKingdom(b.kingdom), "navigation")) / 2;
+    const guildBonus = hasTradition(getKingdom(a.kingdom), "merchant_guilds") || hasTradition(getKingdom(b.kingdom), "merchant_guilds") ? 1.1 : 1;
+    const maximum = (10 + (buildingCount(a, "warehouse") + buildingCount(b, "warehouse")) * 7 + (buildingCount(a, "market") + buildingCount(b, "market")) * 2) * (1 + tradeKnowledge * .1) * guildBonus;
     const aToB = bestShipment(a, b, maximum), bToA = bestShipment(b, a, maximum);
     let source = a, destination = b, shipment = aToB;
     if (bToA && (!shipment || bToA.score > shipment.score)) { source = b; destination = a; shipment = bToA; }
@@ -1025,6 +1205,7 @@ function completeCaravan(caravan, route) {
     getKingdom(source.kingdom).resources[caravan.returnResource] = clamp(getKingdom(source.kingdom).resources[caravan.returnResource] + caravan.returnAmount, 0, 9999);
     const relation = relationBetween(source.kingdom, destination.kingdom);
     if (relation) { relation.score = clamp(relation.score + 1, -100, 100); getKingdom(destination.kingdom).relations[String(source.kingdom)].score = relation.score; }
+    exchangeCultures(getKingdom(source.kingdom), getKingdom(destination.kingdom));
   }
   route.deliveries++; route.delivered += caravan.amount + caravan.returnAmount; route.lastDeliveryYear = Math.floor(year);
   worldStats.tradeDeliveries++; worldStats.tradeVolume += caravan.amount + caravan.returnAmount;
@@ -1042,7 +1223,8 @@ function simulateCaravans() {
     if (nearbyDisaster) caravan.hp -= .16;
     if (tileAt(Math.round(caravan.x), Math.round(caravan.y))?.fire) caravan.hp -= 1.8;
     if (caravan.hp <= 0) { route.losses++; addEvent(`一支往返${getVillage(caravan.toVillage)?.name || "远方"}的商队失联，货物全部损失。`); continue; }
-    let travel = (route.mode === "sea" ? .3 : .22) * (route.status === "blockaded" ? .35 : 1);
+    const caravanKingdom = getKingdom(getVillage(caravan.fromVillage)?.kingdom), navigationBonus = 1 + technologyLevel(caravanKingdom, "navigation") * .1;
+    let travel = (route.mode === "sea" ? .3 : .22) * (route.status === "blockaded" ? .35 : 1) * navigationBonus;
     while (travel > 0 && caravan.pathIndex < path.length - 1) {
       const from = path[caravan.pathIndex], to = path[caravan.pathIndex + 1], segmentLength = Math.max(.1, Math.hypot(to.x - from.x, to.y - from.y));
       const roadBoost = route.mode === "land" && structureAt(to.x, to.y, "road") ? 1.55 : 1, step = travel * roadBoost, remaining = segmentLength - caravan.segmentProgress;
@@ -1060,14 +1242,17 @@ function produceResources() {
     const realmVillages = villagesOfKingdom(kingdom.id);
     const realmPeople = peopleOfKingdom(kingdom.id);
     const race = raceDefs[kingdom.race] || raceDefs.human;
+    const agricultureBonus = 1 + technologyLevel(kingdom, "agriculture") * .1 + (hasTradition(kingdom, "harvest_rites") ? .08 : 0);
+    const woodBonus = 1 + technologyLevel(kingdom, "engineering") * .04 + (hasTradition(kingdom, "forest_kin") ? .08 : 0);
+    const stoneBonus = 1 + technologyLevel(kingdom, "engineering") * .05 + (hasTradition(kingdom, "stone_lore") ? .08 : 0);
     let food = 0, wood = 0, stone = 0;
     for (const village of realmVillages) {
       const residents = peopleOfVillage(village.id), jobs = professionCounts(residents), terrain = ownedTerrainCounts(kingdom.id, village), b = village.buildings;
       const farmerOutput = jobs.farmer * (.55 + b.farm * .22), lumberOutput = jobs.lumberjack * (.48 + b.lumber * .24), minerOutput = jobs.miner * (.4 + b.quarry * .28);
       const dockOutput = b.dock * (.45 + residents.length * .018);
-      const localFood = (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + dockOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food * climateFoodMultiplier;
-      const localWood = (terrain.forest * .018 + lumberOutput + jobs.laborer * .018) * race.wood;
-      const localStone = (terrain.mountain * .014 + minerOutput) * race.stone;
+      const localFood = (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + dockOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food * climateFoodMultiplier * agricultureBonus;
+      const localWood = (terrain.forest * .018 + lumberOutput + jobs.laborer * .018) * race.wood * woodBonus;
+      const localStone = (terrain.mountain * .014 + minerOutput) * race.stone * stoneBonus;
       food += localFood; wood += localWood; stone += localStone;
       village.inventory ||= { food: 45, wood: 24, stone: 12 };
       village.inventory.food = clamp(village.inventory.food + localFood - residents.length * .16, 0, villageInventoryCapacity(village, "food"));
@@ -1084,10 +1269,10 @@ function produceResources() {
     }
     const merchants = realmVillages.reduce((sum, village) => sum + (village.workforce?.merchant || 0), 0);
     const markets = realmVillages.reduce((sum, village) => sum + buildingCount(village, "market"), 0), docks = realmVillages.reduce((sum, village) => sum + buildingCount(village, "dock"), 0);
-    const tradeBonus = 1 + merchants * .006 + markets * .01 + docks * .012, warCost = 1 + Math.min(1, kingdom.warWeariness / 100);
+    const tradeBonus = 1 + merchants * .006 + markets * .01 + docks * .012 + technologyLevel(kingdom, "navigation") * .025, warCost = 1 + Math.min(1, kingdom.warWeariness / 100);
     const farms = realmVillages.reduce((sum, village) => sum + (village.buildings?.farm || 0), 0);
     const warehouses = realmVillages.reduce((sum, village) => sum + buildingCount(village, "warehouse"), 0);
-    const foodCapacity = 50 + realmPeople.length * 6 + realmVillages.length * 35 + farms * 45 + warehouses * 120;
+    const foodCapacity = (50 + realmPeople.length * 6 + realmVillages.length * 35 + farms * 45 + warehouses * 120) * (1 + technologyLevel(kingdom, "agriculture") * .06);
     const surplusSpoilage = Math.max(0, kingdom.resources.food - foodCapacity * .72) * .045;
     kingdom.resources.food = clamp(kingdom.resources.food + food * tradeBonus - realmPeople.length * .16 * warCost - surplusSpoilage, 0, foodCapacity);
     kingdom.resources.wood = clamp(kingdom.resources.wood + wood * tradeBonus, 0, 9999);
@@ -1117,13 +1302,14 @@ function attemptConstruction(village, population) {
   consider(realmPopulation > 8 && b.barracks < village.level, "barracks");
   for (const fallback of ["house", "farm", "lumber", "quarry", "road", "wall"]) consider(true, fallback);
   for (const choice of choices) {
-    const def = buildingDefs[choice];
-    if (kingdom.resources.wood < def.wood || kingdom.resources.stone < def.stone) continue;
+    const def = buildingDefs[choice], costMultiplier = Math.max(.78, 1 - technologyLevel(kingdom, "engineering") * .05 - (hasTradition(kingdom, "stone_lore") ? .03 : 0));
+    const woodCost = def.wood * costMultiplier, stoneCost = def.stone * costMultiplier;
+    if (kingdom.resources.wood < woodCost || kingdom.resources.stone < stoneCost) continue;
     let created = 0;
     if (choice === "road") created = buildRoadProject(village, 3);
     else created = addStructureEntity(village, choice) ? 1 : 0;
     if (!created) continue;
-    kingdom.resources.wood -= def.wood; kingdom.resources.stone -= def.stone;
+    kingdom.resources.wood -= woodCost; kingdom.resources.stone -= stoneCost;
     addEvent(choice === "road" ? `${kingdom.name}在${village.name}铺设了${created}段道路。` : `${kingdom.name}在${village.name}建成了${def.name}。`);
     village.buildCooldown = randi(15, 28); return;
   }
@@ -1140,7 +1326,7 @@ function simulationStep() {
   const ecologyStride = people.length + animals.length > 900 ? 3 : 2;
   regenerateBiomass(); if (ticks % ecologyStride === 0) simulateAnimals(ecologyStride);
   if (ticks % 10 === 0) produceResources();
-  if (ticks % 60 === 0) { dispatchCaravans(); governanceStep(); }
+  if (ticks % 60 === 0) { dispatchCaravans(); governanceStep(); cultureTechnologyStep(); }
   if (ticks % 45 === 0) { updateMilitaryRoles(); updateProfessions(); }
   if (ticks % 120 === 0) { diplomacyStep(); updateTradeRoutes(); }
   if (ticks % 250 === 0) attemptColonies();
@@ -1462,7 +1648,8 @@ function seedPlague(disaster) {
   let infected = 0;
   for (const person of people) {
     if (person.blessed || !disasterFalloff(disaster, person.x, person.y)) continue;
-    if (Math.random() < .16 * disaster.intensity) { person.plague = randi(160, 300); infected++; }
+    const resistance = 1 - technologyLevel(getKingdom(person.kingdom), "medicine") * .16;
+    if (Math.random() < .16 * disaster.intensity * resistance) { person.plague = randi(160, 300); infected++; }
   }
   if (!infected) {
     const patient = nearestEntity(people, disaster.x, disaster.y, person => !person.blessed);
@@ -1547,7 +1734,8 @@ function simulatePlague(disaster) {
   if (disaster.age % 12) return;
   for (const person of people) {
     if (person.plague > 0 || person.blessed || !disasterFalloff(disaster, person.x, person.y)) continue;
-    if (Math.random() < .018 * disaster.intensity) person.plague = randi(140, 260);
+    const resistance = 1 - technologyLevel(getKingdom(person.kingdom), "medicine") * .16;
+    if (Math.random() < .018 * disaster.intensity * resistance) person.plague = randi(140, 260);
   }
 }
 
@@ -1581,7 +1769,7 @@ function simulateSickness() {
     person.health -= .045; person.food = Math.max(0, person.food - .06);
     if (ticks % 10 === 0 && Math.random() < .05) {
       const target = findNearbyEntity(worldIndex.peopleSpatial, person.x, person.y, 2.2, other => other.id !== person.id && !(other.plague > 0) && !other.blessed);
-      if (target) target.plague = randi(120, 240);
+      if (target && Math.random() < 1 - technologyLevel(getKingdom(target.kingdom), "medicine") * .16) target.plague = randi(120, 240);
     }
   }
 }
@@ -1742,7 +1930,7 @@ function simulateArmies() {
       const available = Math.min(supplyVillage.inventory?.food || 0, realm.resources.food || 0), loaded = Math.min(army.maxSupply - army.supply, loadRate, available);
       if (loaded > 0) { army.supply += loaded; supplyVillage.inventory.food -= loaded; realm.resources.food -= loaded; }
     }
-    const supplyRatio = army.supply / Math.max(1, army.maxSupply), targetMorale = clamp(42 + supplyRatio * 38 + (leadership - 1) * 55 - kingdom.warWeariness * .12 - (army.status === "retreat" ? 12 : 0), 5, 96);
+    const supplyRatio = army.supply / Math.max(1, army.maxSupply), culturalMorale = hasTradition(kingdom, "warrior_code") ? 6 : 0, targetMorale = clamp(42 + supplyRatio * 38 + (leadership - 1) * 55 + culturalMorale - kingdom.warWeariness * .12 - (army.status === "retreat" ? 12 : 0), 5, 96);
     army.morale += (targetMorale - army.morale) * .018;
     if (army.supply <= 0) for (const person of members) { person.health -= .025; person.happiness = Math.max(0, person.happiness - .04); }
     if (army.status === "retreat" && rally && Math.hypot(rally.x - army.x, rally.y - army.y) < 5 && army.supply > army.maxSupply * .3) army.morale = Math.min(65, army.morale + .2);
@@ -1768,6 +1956,7 @@ function militaryBehavior(person) {
   const enemyIds = new Set(enemyKingdomIds(person.kingdom));
   if (!enemyIds.size) { demobilizePerson(person); return; }
   const army = armyOfSoldier(person.id), unit = unitDefs[person.unitType] || unitDefs.militia, general = army ? people.find(candidate => candidate.id === army.generalId) : null;
+  const realm = getKingdom(person.kingdom), metallurgyBonus = 1 + technologyLevel(realm, "metallurgy") * .08 + (hasTradition(realm, "warrior_code") ? .06 : 0);
   const moraleFactor = army ? clamp(.45 + army.morale / 100 * .75, .45, 1.2) : .85, supplyFactor = army ? clamp(.45 + army.supply / Math.max(1, army.maxSupply), .45, 1.25) : .8, leadership = general?.leadership || 1;
   person.cooldown = Math.max(2, Math.round(person.cooldown / unit.speed));
   if (army?.status === "retreat") {
@@ -1777,7 +1966,7 @@ function militaryBehavior(person) {
   if (nearbyEnemy) {
     const distance = Math.hypot(nearbyEnemy.x - person.x, nearbyEnemy.y - person.y);
     if (distance <= unit.range && person.attackCooldown <= 0) {
-      const enemyUnit = unitDefs[nearbyEnemy.unitType] || unitDefs.militia, damage = rand(10, 21) * unit.attack * (raceDefs[person.race]?.combat || 1) * moraleFactor * supplyFactor * leadership * (person.blessed ? 1.3 : 1) / enemyUnit.defense;
+      const enemyUnit = unitDefs[nearbyEnemy.unitType] || unitDefs.militia, damage = rand(10, 21) * unit.attack * (raceDefs[person.race]?.combat || 1) * moraleFactor * supplyFactor * leadership * metallurgyBonus * (person.blessed ? 1.3 : 1) / enemyUnit.defense;
       nearbyEnemy.health -= damage;
       if (distance <= enemyUnit.range && unit.range < 2.5) person.health -= rand(1, 6) * enemyUnit.attack / unit.defense;
       person.attackCooldown = unit.range > 2 ? 7 : unit.speed > 1.2 ? 4 : 5;
@@ -1790,7 +1979,7 @@ function militaryBehavior(person) {
   const distance = Math.hypot(target.x - person.x, target.y - person.y);
   if (distance <= unit.range + .55 && person.attackCooldown <= 0) {
     const walls = buildingCount(target, "wall"), siegePower = unit.siege || .72, wallResistance = unit.siege ? 1 + walls * .04 : 1 + walls * .22;
-    const siegeDamage = rand(1.8, 4.2) * siegePower * moraleFactor * supplyFactor * leadership / wallResistance;
+    const siegeDamage = rand(1.8, 4.2) * siegePower * moraleFactor * supplyFactor * leadership * metallurgyBonus / wallResistance;
     target.hp -= siegeDamage; person.attackCooldown = 5;
     if (army) army.siegeProgress += siegeDamage;
     if (walls && Math.random() < .08 * siegePower) damageRandomBuilding(target, 1, rand(3, 7) * siegePower, "wall");
@@ -1938,6 +2127,21 @@ function policyControlHtml(kingdom, domain, label) {
   return `<div class="policy-row"><span>${label}</span><div>${Object.entries(policyDefs[domain]).map(([value, def]) => `<button class="policy-choice ${kingdom.policies?.[domain] === value ? "active" : ""}" data-policy-domain="${domain}" data-policy-value="${value}">${def.name}</button>`).join("")}</div></div>`;
 }
 
+function dominantCultureValue(kingdom) {
+  return Object.entries(kingdom.culture.values).sort((a, b) => b[1] - a[1])[0]?.[0] || "community";
+}
+
+function cultureValuesHtml(kingdom) {
+  return Object.entries(cultureValueDefs).map(([id, def]) => `<div class="culture-value"><span>${def.icon} ${def.name}</span><i><em style="width:${Math.round(kingdom.culture.values[id])}%"></em></i><b>${Math.round(kingdom.culture.values[id])}</b></div>`).join("");
+}
+
+function technologyControlsHtml(kingdom) {
+  return Object.entries(technologyDefs).map(([id, def]) => {
+    const level = technologyLevel(kingdom, id), focused = kingdom.technology.focus === id, cost = currentTechnologyCost(kingdom, id);
+    return `<button class="technology-choice ${focused ? "active" : ""} ${level >= 3 ? "maxed" : ""}" data-tech-focus="${id}" title="${def.effect}"><b>${def.icon} ${def.name}</b><span>${"★".repeat(level)}${"☆".repeat(3 - level)}</span><small>${level >= 3 ? "已精通" : focused ? `${Math.floor(kingdom.technology.research)} / ${cost}` : `需 ${cost} 研究`}</small></button>`;
+  }).join("");
+}
+
 function needMeter(label, value) {
   const score = clamp(Math.round(value || 0), 0, 100);
   return `<div class="need-row"><span>${label}</span><i><b style="width:${score}%"></b></i><em>${score}</em></div>`;
@@ -1999,11 +2203,12 @@ function inspectKingdom(kingdomId) {
     if (raceCounts[citizen.race] !== undefined) raceCounts[citizen.race]++;
   }
   const demographics = Object.entries(raceDefs).map(([key, def]) => `${def.icon}${raceCounts[key]}`).join(" ");
-  const jobs = professionCounts(citizens), classes = socialClassCounts(citizens), happiness = averageHappiness(citizens), realmArmies = armies.filter(army => army.kingdomId === kingdomId), government = governmentOf(kingdom);
+  const jobs = professionCounts(citizens), classes = socialClassCounts(citizens), happiness = averageHappiness(citizens), realmArmies = armies.filter(army => army.kingdomId === kingdomId), government = governmentOf(kingdom), ethos = cultureEthosDefs[kingdom.culture.ethos];
   const structures = realmVillages.flatMap(village => village.structures || []), roads = structures.filter(structure => structure.type === "road").length, walls = structures.filter(structure => structure.type === "wall").length;
   const relations = Object.entries(kingdom.relations || {}).map(([id, r]) => `${getKingdom(Number(id))?.name || "未知"}：${statusLabels[r.status]}`).join(" · ") || "尚无外交关系";
+  const traditions = kingdom.culture.traditions.map(id => `<span class="tradition-chip" title="${traditionDefs[id].effect}">${traditionDefs[id].icon} ${traditionDefs[id].name}</span>`).join("") || `<span class="muted">传统正在形成</span>`;
   box.classList.remove("empty");
-  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>政体 / 主体种族</span><b>${government.icon} ${government.name} · ${race.name}</b></div><div class="detail-row"><span>人口 / 士兵 / 军团</span><b>${citizens.length} / ${soldiers} / ${realmArmies.length}</b></div><div class="detail-row"><span>幸福 / 合法性 / 动乱</span><b>${Math.round(happiness)} / ${Math.round(kingdom.legitimacy)} / ${Math.round(kingdom.unrest)}</b></div><div class="detail-row"><span>国库 / 本期税收</span><b>¤ ${Math.floor(kingdom.treasury || 0)} / +${(kingdom.lastTaxRevenue || 0).toFixed(1)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><div class="need-list">${needMeter("政权合法性", kingdom.legitimacy)}${needMeter("社会动乱", kingdom.unrest)}</div><h3>国家政策</h3><div class="policy-controls">${policyControlHtml(kingdom, "tax", "税制")}${policyControlHtml(kingdom, "welfare", "民生")}${policyControlHtml(kingdom, "military", "军事")}</div><div class="intervention-row"><button data-unrest-action="calm">安抚民心</button><button class="danger" data-unrest-action="incite">煽动叛乱</button></div><h3>社会阶层</h3><div class="class-list">${socialClassHtml(classes)}</div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
+  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>政体 / 主体种族</span><b>${government.icon} ${government.name} · ${race.name}</b></div><div class="detail-row"><span>人口 / 士兵 / 军团</span><b>${citizens.length} / ${soldiers} / ${realmArmies.length}</b></div><div class="detail-row"><span>幸福 / 合法性 / 动乱</span><b>${Math.round(happiness)} / ${Math.round(kingdom.legitimacy)} / ${Math.round(kingdom.unrest)}</b></div><div class="detail-row"><span>国库 / 本期税收</span><b>¤ ${Math.floor(kingdom.treasury || 0)} / +${(kingdom.lastTaxRevenue || 0).toFixed(1)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><div class="need-list">${needMeter("政权合法性", kingdom.legitimacy)}${needMeter("社会动乱", kingdom.unrest)}</div><h3>${ethos.icon} ${kingdom.culture.name}</h3><div class="detail-row"><span>文化精神 / 影响力</span><b>${ethos.name} · ${Math.floor(kingdom.culture.influence)}</b></div><div class="culture-values">${cultureValuesHtml(kingdom)}</div><div class="tradition-list">${traditions}</div><h3>科技研究 · 累计 ${totalTechnologyLevel(kingdom)} 级</h3><div class="technology-grid">${technologyControlsHtml(kingdom)}</div><p class="muted">当前研究效率 +${kingdom.technology.researchRate.toFixed(1)} / 周期；点击科技可锁定研究方向 10 纪元。</p><h3>国家政策</h3><div class="policy-controls">${policyControlHtml(kingdom, "tax", "税制")}${policyControlHtml(kingdom, "welfare", "民生")}${policyControlHtml(kingdom, "military", "军事")}</div><div class="intervention-row"><button data-unrest-action="calm">安抚民心</button><button class="danger" data-unrest-action="incite">煽动叛乱</button></div><h3>社会阶层</h3><div class="class-list">${socialClassHtml(classes)}</div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
 }
 
 function inspectTradeRoute(routeId) {
@@ -2286,6 +2491,10 @@ function updateUI() {
     const government = governmentOf(kingdom), unrest = Math.round(kingdom.unrest || 0), legitimacy = Math.round(kingdom.legitimacy || 0);
     return `<button class="governance-item ${unrest >= 65 ? "unstable" : ""}" data-governance="${kingdom.id}" style="border-color:${kingdom.color}"><b>${government.icon} ${kingdom.name}</b><span>${government.name} · ¤ ${Math.floor(kingdom.treasury || 0)}</span><small>${policyOf(kingdom, "tax").name} · ${policyOf(kingdom, "welfare").name} · ${policyOf(kingdom, "military").name}</small><i><em class="legitimacy" style="width:${legitimacy}%"></em><em class="unrest" style="width:${unrest}%"></em></i><small>合法性 ${legitimacy} · 动乱 ${unrest}</small></button>`;
   }).join("") : `<p class="muted">尚未形成政治秩序</p>`;
+  document.getElementById("cultureList").innerHTML = activeKingdoms.length ? activeKingdoms.map(kingdom => {
+    const ethos = cultureEthosDefs[kingdom.culture.ethos], dominant = cultureValueDefs[dominantCultureValue(kingdom)], focus = technologyDefs[kingdom.technology.focus], cost = currentTechnologyCost(kingdom), progress = cost ? clamp(kingdom.technology.research / cost * 100, 0, 100) : 100;
+    return `<button class="culture-item" data-culture="${kingdom.id}" style="border-color:${kingdom.color}"><b>${ethos.icon} ${kingdom.culture.name}</b><span>${ethos.name} · 崇尚${dominant.name} · 影响 ${Math.floor(kingdom.culture.influence)}</span><small>${focus.icon} ${focus.name} ${technologyLevel(kingdom, kingdom.technology.focus)}级 · 总科技 ${totalTechnologyLevel(kingdom)}</small><i><em style="width:${progress}%"></em></i><small>研究 +${kingdom.technology.researchRate.toFixed(1)} / 周期 · 传统 ${kingdom.culture.traditions.length}</small></button>`;
+  }).join("") : `<p class="muted">文明知识尚未萌芽</p>`;
   document.getElementById("disasterList").innerHTML = activeDisasters.length ? activeDisasters.map(disaster => {
     const def = disasterDefs[disaster.type], progress = clamp(disaster.duration / Math.max(1, disaster.maxDuration) * 100, 0, 100);
     return `<div class="disaster-item ${disaster.type}"><div><b>${def.icon} ${def.name}</b><span>${disasterLocation(disaster)} · 约 ${(disaster.duration * .02).toFixed(1)} 纪元</span></div><i style="width:${progress}%"></i></div>`;
@@ -2318,8 +2527,8 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 11, savedAt: new Date().toISOString(),
-    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length },
+    version: 12, savedAt: new Date().toISOString(),
+    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length, technologyLevels: kingdoms.reduce((sum, kingdom) => sum + totalTechnologyLevel(kingdom), 0) },
     worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1, round3(t.moisture), round3(t.temperature)]), climate,
     people, animals, villages, kingdoms, events, chronicle, worldStats, worldProgress, activeDisasters, tradeRoutes, caravans, armies, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextDisasterId, nextDisasterYear,
     settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency }
@@ -2366,7 +2575,7 @@ function normalizeWorldData(sourceVersion = 1) {
     tile.moisture = clamp(Number.isFinite(Number(tile.moisture)) ? Number(tile.moisture) : tile.type === "forest" ? .7 : tile.type === "grass" ? .52 : .2, 0, 1);
     tile.temperature = clamp(Number.isFinite(Number(tile.temperature)) ? Number(tile.temperature) : latitudeTemperature - (tile.type === "mountain" ? 8 : 0), -35, 55);
   }
-  for (const kingdom of kingdoms) kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4];
+  for (const kingdom of kingdoms) { kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4]; normalizeCultureTechnology(kingdom); }
   for (const person of people) {
     person.race ||= getKingdom(person.kingdom)?.race || "human"; person.role ||= "civilian";
     person.profession = person.role === "soldier" ? "soldier" : person.age < 16 ? "child" : professionDefs[person.profession] && person.profession !== "soldier" ? person.profession : "laborer";
@@ -2491,12 +2700,16 @@ function normalizeWorldData(sourceVersion = 1) {
     }
     addEvent("野猪与赤狐种群迁入大陆，食物网出现新的竞争关系。");
   }
+  if (sourceVersion < 12) {
+    for (const kingdom of kingdoms) if (!kingdom.defeated) seedLegacyCultureTechnology(kingdom);
+    addEvent("各文明开始整理传统与知识，文化和科技进入可记录的时代。");
+  }
   rebuildWorldIndexes();
   worldStats.villagesFounded = Math.max(worldStats.villagesFounded, villages.length);
   worldStats.buildingsConstructed = Math.max(worldStats.buildingsConstructed, structureTotal());
   worldStats.tradeDeliveries = Math.max(worldStats.tradeDeliveries, tradeRoutes.reduce((sum, route) => sum + (route.deliveries || 0), 0));
   worldStats.tradeVolume = Math.max(worldStats.tradeVolume, tradeRoutes.reduce((sum, route) => sum + (route.delivered || 0), 0));
-  evaluateWorldProgress(sourceVersion >= 11);
+  evaluateWorldProgress(sourceVersion >= 12);
 }
 
 function restoreWorld(save, slot = activeSaveSlot) {
@@ -2613,11 +2826,16 @@ document.getElementById("armyList").addEventListener("click", e => {
 document.getElementById("governanceList").addEventListener("click", e => {
   const item = e.target.closest("[data-governance]"); if (item) inspectKingdom(Number(item.dataset.governance));
 });
+document.getElementById("cultureList").addEventListener("click", e => {
+  const item = e.target.closest("[data-culture]"); if (item) inspectKingdom(Number(item.dataset.culture));
+});
 document.getElementById("diplomacyList").addEventListener("click", e => {
   const button = e.target.closest("[data-diplomacy-action]"); if (!button) return;
   interveneDiplomacy(Number(button.dataset.kingdomA), Number(button.dataset.kingdomB), button.dataset.diplomacyAction);
 });
 document.getElementById("selectionCard").addEventListener("click", e => {
+  const technologyButton = e.target.closest("[data-tech-focus]");
+  if (technologyButton && selectedKingdomId !== null) { setResearchFocus(selectedKingdomId, technologyButton.dataset.techFocus, true); return; }
   const policyButton = e.target.closest("[data-policy-domain]");
   if (policyButton && selectedKingdomId !== null) { setKingdomPolicy(selectedKingdomId, policyButton.dataset.policyDomain, policyButton.dataset.policyValue, true); return; }
   const unrestButton = e.target.closest("[data-unrest-action]");
