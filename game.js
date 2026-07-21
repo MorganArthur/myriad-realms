@@ -1,5 +1,6 @@
 "use strict";
 
+const { rand, randi, clamp, cleanText, smoothNoise, removeDeadEntities } = globalThis.WorldEngine;
 const canvas = document.getElementById("worldCanvas");
 const ctx = canvas.getContext("2d", { alpha: false });
 const MAP_W = 120, MAP_H = 80;
@@ -138,20 +139,20 @@ let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextStructureId = 1, 
 let autoSaveEnabled = true, lastAutoSaveYear = 0, autoSavePending = false, indexesReady = false, renderDirty = true;
 let randomDisastersEnabled = true, disasterFrequency = "normal", nextDisasterYear = 10;
 let worldIndex = createWorldIndex();
+let performanceMetrics = { frames: 0, steps: 0, fps: 0, ups: 0, simulationMs: 0, renderMs: 0, sampleStarted: performance.now() };
 
-const rand = (a, b) => Math.random() * (b - a) + a;
-const randi = (a, b) => Math.floor(rand(a, b + 1));
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const idx = (x, y) => y * MAP_W + x;
 const tileAt = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H ? tiles[idx(x, y)] : null;
 const isLand = t => t && !["deep", "water"].includes(t.type);
 const getKingdom = id => (indexesReady ? worldIndex.kingdomById.get(id) : null) || kingdoms.find(k => k.id === id);
 const getVillage = id => (indexesReady ? worldIndex.villageById.get(id) : null) || villages.find(v => v.id === id);
+const getPerson = id => (indexesReady ? worldIndex.personById.get(id) : null) || people.find(person => person.id === id) || null;
+const getTradeRoute = id => (indexesReady ? worldIndex.tradeRouteById.get(id) : null) || tradeRoutes.find(route => route.id === id) || null;
+const getArmy = id => (indexesReady ? worldIndex.armyById.get(id) : null) || armies.find(army => army.id === id) || null;
 const peopleOfVillage = id => indexesReady ? (worldIndex.peopleByVillage.get(id) || []) : people.filter(p => p.village === id && !p.dead);
 const peopleOfKingdom = id => indexesReady ? (worldIndex.peopleByKingdom.get(id) || []) : people.filter(p => p.kingdom === id && !p.dead);
 const villagesOfKingdom = id => indexesReady ? (worldIndex.villagesByKingdom.get(id) || []) : villages.filter(v => v.kingdom === id);
 const spatialKey = (x, y) => `${Math.floor(x / 6)},${Math.floor(y / 6)}`;
-const cleanText = value => String(value ?? "").replace(/[<>&"']/g, "").slice(0, 120);
 
 function createWorldStats() {
   return {
@@ -204,7 +205,7 @@ function evaluateWorldProgress(announce = true) {
 
 function createWorldIndex() {
   return {
-    kingdomById: new Map(), villageById: new Map(), peopleByVillage: new Map(), peopleByKingdom: new Map(), villagesByKingdom: new Map(),
+    kingdomById: new Map(), villageById: new Map(), personById: new Map(), tradeRouteById: new Map(), armyById: new Map(), peopleByVillage: new Map(), peopleByKingdom: new Map(), villagesByKingdom: new Map(),
     peopleSpatial: new Map(), animalSpatial: new Map(), structureByTile: new Map(), speciesCounts: Object.fromEntries(Object.keys(animalDefs).map(species => [species, 0]))
   };
 }
@@ -222,6 +223,7 @@ function rebuildWorldIndexes() {
   }
   for (const person of people) {
     if (person.dead) continue;
+    worldIndex.personById.set(person.id, person);
     addToIndex(worldIndex.peopleByVillage, person.village, person); addToIndex(worldIndex.peopleByKingdom, person.kingdom, person);
     addToIndex(worldIndex.peopleSpatial, spatialKey(person.x, person.y), person);
   }
@@ -230,12 +232,27 @@ function rebuildWorldIndexes() {
     addToIndex(worldIndex.animalSpatial, spatialKey(animal.x, animal.y), animal);
     if (worldIndex.speciesCounts[animal.species] !== undefined) worldIndex.speciesCounts[animal.species]++;
   }
+  for (const route of tradeRoutes) worldIndex.tradeRouteById.set(route.id, route);
+  for (const army of armies) worldIndex.armyById.set(army.id, army);
   indexesReady = true;
 }
 
 function structureAt(x, y, type = null) {
   const structures = indexesReady ? (worldIndex.structureByTile.get(`${Math.round(x)},${Math.round(y)}`) || []) : villages.flatMap(village => village.structures || []).filter(structure => Math.round(structure.x) === Math.round(x) && Math.round(structure.y) === Math.round(y));
   return structures.find(structure => structure.hp > 0 && (!type || structure.type === type)) || null;
+}
+
+function indexStructure(structure) {
+  if (!indexesReady) return;
+  addToIndex(worldIndex.structureByTile, `${Math.round(structure.x)},${Math.round(structure.y)}`, structure);
+}
+
+function unindexStructure(structure) {
+  if (!indexesReady) return;
+  const key = `${Math.round(structure.x)},${Math.round(structure.y)}`, bucket = worldIndex.structureByTile.get(key);
+  if (!bucket) return;
+  const next = bucket.filter(candidate => candidate.id !== structure.id);
+  if (next.length) worldIndex.structureByTile.set(key, next); else worldIndex.structureByTile.delete(key);
 }
 
 function animalCounts(forceFresh = false) {
@@ -307,10 +324,16 @@ function findNearbyEntity(map, x, y, radius, predicate, nearest = false) {
   return match;
 }
 
-function removeDeadEntities(entities) {
-  let writeIndex = 0;
-  for (const entity of entities) if (!entity.dead) entities[writeIndex++] = entity;
-  entities.length = writeIndex;
+function countNearbyEntities(map, x, y, radius, predicate) {
+  let count = 0;
+  const radiusSquared = radius * radius, cellRadius = Math.ceil(radius / 6), cx = Math.floor(x / 6), cy = Math.floor(y / 6);
+  for (let oy = -cellRadius; oy <= cellRadius; oy++) for (let ox = -cellRadius; ox <= cellRadius; ox++) {
+    for (const entity of map.get(`${cx + ox},${cy + oy}`) || []) {
+      const dx = entity.x - x, dy = entity.y - y;
+      if (!entity.dead && dx * dx + dy * dy <= radiusSquared && predicate(entity)) count++;
+    }
+  }
+  return count;
 }
 
 function relationBetween(aId, bId) {
@@ -369,20 +392,6 @@ function createKingdom(race = "human") {
     setRelation(id, other.id, "peace", randi(-35, 35) + affinity, true);
   }
   return kingdom;
-}
-
-function smoothNoise(width, height, passes = 5) {
-  let data = Array.from({ length: width * height }, () => Math.random());
-  for (let p = 0; p < passes; p++) {
-    const next = data.slice();
-    for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
-      let sum = 0;
-      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) sum += data[(y + oy) * width + x + ox];
-      next[y * width + x] = sum / 9;
-    }
-    data = next;
-  }
-  return data;
 }
 
 function generateWorld() {
@@ -541,7 +550,7 @@ function addStructureEntity(village, type, site = null) {
   village.structures.push(structure);
   worldStats.buildingsConstructed++;
   const tile = tileAt(Math.round(site.x), Math.round(site.y)); if (tile && isLand(tile) && tile.owner < 0) tile.owner = village.kingdom;
-  syncBuildingCounts(village); indexesReady = false;
+  syncBuildingCounts(village); indexStructure(structure);
   return structure;
 }
 
@@ -1026,7 +1035,7 @@ function completeCaravan(caravan, route) {
 function simulateCaravans() {
   const survivors = [];
   for (const caravan of caravans) {
-    const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), path = route ? (route.fromVillage === caravan.fromVillage ? route.path : [...route.path].reverse()) : null;
+    const route = getTradeRoute(caravan.routeId), path = route ? (route.fromVillage === caravan.fromVillage ? route.path : [...route.path].reverse()) : null;
     if (!route || !path?.length) continue;
     if (route.status === "blockaded") caravan.hp -= .28;
     const nearbyDisaster = activeDisasters.some(disaster => disasterFalloff(disaster, caravan.x, caravan.y));
@@ -1122,12 +1131,14 @@ function attemptConstruction(village, population) {
 }
 
 function simulationStep() {
-  ticks++; year += .02; updateClimate(); rebuildWorldIndexes();
+  const simulationStarted = performance.now();
+  ticks++; year += .02; updateClimate(); if (!indexesReady) rebuildWorldIndexes();
   if (ticks % 25 === 0) triggerRandomDisaster();
   simulateDisasters();
   simulateCaravans();
   simulateArmies();
-  regenerateBiomass(); if (ticks % 2 === 0) simulateAnimals(2);
+  const ecologyStride = people.length + animals.length > 900 ? 3 : 2;
+  regenerateBiomass(); if (ticks % ecologyStride === 0) simulateAnimals(ecologyStride);
   if (ticks % 10 === 0) produceResources();
   if (ticks % 60 === 0) { dispatchCaravans(); governanceStep(); }
   if (ticks % 45 === 0) { updateMilitaryRoles(); updateProfessions(); }
@@ -1208,7 +1219,10 @@ function simulationStep() {
   if (ticks % 20 === 0) evaluateWorldProgress();
   if (autoSaveEnabled && year - lastAutoSaveYear >= 5) { scheduleAutoSave(); lastAutoSaveYear = year; }
   renderDirty = true;
-  if (ticks % 20 === 0) updateUI();
+  if (ticks % (people.length + animals.length > 900 ? 30 : 20) === 0) updateUI();
+  performanceMetrics.steps++;
+  const elapsed = performance.now() - simulationStarted;
+  performanceMetrics.simulationMs = performanceMetrics.simulationMs ? performanceMetrics.simulationMs * .9 + elapsed * .1 : elapsed;
 }
 
 function regenerateBiomass() {
@@ -1373,7 +1387,7 @@ function damageStructure(village, structure, amount, announce = true) {
   const def = buildingDefs[structure.type];
   village.structures = (village.structures || []).filter(candidate => candidate.id !== structure.id);
   worldStats.buildingsDestroyed++;
-  syncBuildingCounts(village); indexesReady = false;
+  syncBuildingCounts(village); unindexStructure(structure);
   if (announce && def) addEvent(`${village.name}的一座${def.name}被摧毁。`);
   return true;
 }
@@ -1602,8 +1616,7 @@ function enemyKingdomIds(kingdomId) {
 }
 
 const armyNames = ["第一军团", "铁壁军", "远征军", "王庭卫队", "赤旗军", "边境军", "风暴军", "山岳军"];
-const getArmy = id => armies.find(army => army.id === id) || null;
-const armySoldiers = army => (army?.soldierIds || []).map(id => people.find(person => person.id === id && person.role === "soldier" && !person.dead)).filter(Boolean);
+const armySoldiers = army => (army?.soldierIds || []).map(getPerson).filter(person => person?.role === "soldier" && !person.dead);
 const armyOfSoldier = personId => armies.find(army => army.soldierIds?.includes(personId)) || null;
 
 function recordSoldierCasualty(person) {
@@ -1716,7 +1729,7 @@ function simulateArmies() {
     }
     const target = getVillage(army.targetVillageId), rally = getVillage(army.rallyVillageId) || nearestFriendlySupplyVillage(army);
     const supplyVillage = nearestFriendlySupplyVillage(army), supplyDistance = supplyVillage ? Math.hypot(supplyVillage.x - army.x, supplyVillage.y - army.y) : Infinity;
-    const nearbyEnemies = people.filter(person => !person.dead && enemyIds.has(person.kingdom) && Math.hypot(person.x - army.x, person.y - army.y) < 7).length;
+    const nearbyEnemies = countNearbyEntities(worldIndex.peopleSpatial, army.x, army.y, 7, person => enemyIds.has(person.kingdom));
     if (!enemyIds.size) { army.status = "garrison"; army.targetVillageId = null; army.siegeProgress = 0; }
     else if (army.morale < 18 || army.supply <= 0) army.status = "retreat";
     else if (nearbyEnemies) army.status = "battle";
@@ -1958,7 +1971,7 @@ function inspectAt(x, y) {
     const socialClass = socialClassDefs[person.socialClass] || socialClassDefs.peasant;
     box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${unit ? `${unit.icon} ${unit.name}` : `${profession.icon} ${profession.name}`} #${person.id}</h4><div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>社会阶层</span><b>${socialClass.icon} ${socialClass.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div>${militaryRows}<div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
   } else if (caravan) {
-    const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), source = getVillage(caravan.fromVillage), destination = getVillage(caravan.toVillage), cargo = tradeResourceDefs[caravan.resource], progress = route?.path?.length > 1 ? caravan.pathIndex / (route.path.length - 1) * 100 : 0;
+    const route = getTradeRoute(caravan.routeId), source = getVillage(caravan.fromVillage), destination = getVillage(caravan.toVillage), cargo = tradeResourceDefs[caravan.resource], progress = route?.path?.length > 1 ? caravan.pathIndex / (route.path.length - 1) * 100 : 0;
     box.innerHTML = `<h4>${route?.mode === "sea" ? "⛵" : "🐴"} 商队 #${caravan.id}</h4><div class="detail-row"><span>路线</span><b>${source?.name} → ${destination?.name}</b></div><div class="detail-row"><span>货物</span><b>${cargo?.icon} ${cargo?.name} ${Math.floor(caravan.amount)}</b></div><div class="detail-row"><span>交换货物</span><b>${caravan.returnResource ? `${tradeResourceDefs[caravan.returnResource].icon} ${tradeResourceDefs[caravan.returnResource].name} ${Math.floor(caravan.returnAmount)}` : "国内调拨"}</b></div><div class="detail-row"><span>状态</span><b>${route?.status === "blockaded" ? "突破封锁" : "运输中"}</b></div><div class="need-list">${needMeter("行程", progress)}${needMeter("商队安全", caravan.hp)}</div>`;
   } else if (animal) {
     const def = animalDefs[animal.species];
@@ -1994,7 +2007,7 @@ function inspectKingdom(kingdomId) {
 }
 
 function inspectTradeRoute(routeId) {
-  const route = tradeRoutes.find(candidate => candidate.id === routeId); if (!route) { selectedTradeRouteId = null; return; }
+  const route = getTradeRoute(routeId); if (!route) { selectedTradeRouteId = null; return; }
   selectedKingdomId = null; selectedTradeRouteId = routeId; selectedArmyId = null;
   const from = getVillage(route.fromVillage), to = getVillage(route.toVillage), inTransit = caravans.find(caravan => caravan.routeId === route.id), box = document.getElementById("selectionCard");
   const status = route.status === "active" ? "畅通" : route.status === "blockaded" ? "战争封锁" : "设施中断";
@@ -2045,7 +2058,7 @@ function renderTradeRoutes(m) {
 
 function renderCaravans(m) {
   for (const caravan of caravans) {
-    const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), sx = m.ox + (caravan.x + .5) * m.size, sy = m.oy + (caravan.y + .5) * m.size;
+    const route = getTradeRoute(caravan.routeId), sx = m.ox + (caravan.x + .5) * m.size, sy = m.oy + (caravan.y + .5) * m.size;
     if (!route || sx < -10 || sy < -10 || sx > m.width + 10 || sy > m.height + 10) continue;
     const size = clamp(m.size * .46, 2.2, 5.5), def = tradeResourceDefs[caravan.resource];
     ctx.save(); ctx.fillStyle = caravan.hp < 35 ? "#d85d49" : route.mode === "sea" ? "#d7e3d8" : "#4c3325"; ctx.strokeStyle = def?.color || "#e6cc86"; ctx.lineWidth = Math.max(1, m.size * .16);
@@ -2117,7 +2130,7 @@ function renderStructures(m) {
 }
 
 function render() {
-  const m = viewMetrics(); ctx.clearRect(0, 0, m.width, m.height); ctx.fillStyle = "#0f2534"; ctx.fillRect(0, 0, m.width, m.height);
+  const renderStarted = performance.now(), m = viewMetrics(); ctx.clearRect(0, 0, m.width, m.height); ctx.fillStyle = "#0f2534"; ctx.fillRect(0, 0, m.width, m.height);
   const seasonalTint = seasonDefs[climate.season]?.tint || null;
   const minX = clamp(Math.floor(-m.ox / m.size), 0, MAP_W), maxX = clamp(Math.ceil((m.width - m.ox) / m.size), 0, MAP_W);
   const minY = clamp(Math.floor(-m.oy / m.size), 0, MAP_H), maxY = clamp(Math.ceil((m.height - m.oy) / m.size), 0, MAP_H);
@@ -2173,6 +2186,8 @@ function render() {
     if (p.isGeneral && m.size > 5) { ctx.fillStyle = "#ffe37d"; ctx.beginPath(); ctx.moveTo(sx, sy - r - 3); ctx.lineTo(sx + 2.5, sy - r + 1); ctx.lineTo(sx - 2.5, sy - r + 1); ctx.closePath(); ctx.fill(); }
     if (p.plague > 0 && m.size > 5) { ctx.strokeStyle = "#c2ed74"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2); ctx.stroke(); }
   }
+  const elapsed = performance.now() - renderStarted;
+  performanceMetrics.renderMs = performanceMetrics.renderMs ? performanceMetrics.renderMs * .9 + elapsed * .1 : elapsed;
 }
 
 function renderDisasters(m) {
@@ -2629,14 +2644,24 @@ canvas.addEventListener("wheel", e => {
 window.addEventListener("resize", resizeCanvas);
 
 let last = performance.now(), accumulator = 0;
+function updatePerformanceDisplay(now) {
+  const elapsed = now - performanceMetrics.sampleStarted;
+  if (elapsed < 1000) return;
+  performanceMetrics.fps = Math.round(performanceMetrics.frames * 1000 / elapsed);
+  performanceMetrics.ups = Math.round(performanceMetrics.steps * 1000 / elapsed);
+  document.getElementById("performanceStat").textContent = `${performanceMetrics.fps} FPS · ${performanceMetrics.ups} UPS · 模拟 ${performanceMetrics.simulationMs.toFixed(1)}ms · 绘制 ${performanceMetrics.renderMs.toFixed(1)}ms`;
+  performanceMetrics.frames = 0; performanceMetrics.steps = 0; performanceMetrics.sampleStarted = now;
+}
 function frame(now) {
+  performanceMetrics.frames++;
   const dt = Math.min(100, now - last); last = now;
   if (running) {
     accumulator += dt * speed; let steps = 0;
     while (accumulator >= 80 && steps < 2) { simulationStep(); accumulator -= 80; steps++; }
     if (steps === 2) accumulator = Math.min(accumulator, 160);
   }
-  if (renderDirty) { render(); renderDirty = false; } requestAnimationFrame(frame);
+  if (renderDirty) { render(); renderDirty = false; }
+  updatePerformanceDisplay(now); requestAnimationFrame(frame);
 }
 autoSaveEnabled = localStorage.getItem("realm-autosave-enabled") !== "false";
 randomDisastersEnabled = localStorage.getItem("realm-random-disasters") !== "false";
