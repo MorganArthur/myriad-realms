@@ -42,6 +42,7 @@ let chronicle = [], worldStats = createWorldStats(), worldProgress = createWorld
 let year = 1, ticks = 0, running = false, speed = 1, selectedTool = "inspect", brushSize = 2;
 let climate = { season: "spring", weather: "clear", temperature: 16, rainfall: .72, seasonProgress: 0, weatherUntil: 1.8, nextWeatherYear: 1.8 };
 let camera = { x: 0, y: 0, zoom: 1 }, dragging = false, lastMouse = null, painting = false;
+let hoveredGrid = null, selectedGrid = null;
 let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextStructureId = 1, nextTradeRouteId = 1, nextCaravanId = 1, nextArmyId = 1, nextDisasterId = 1, selectedKingdomId = null, selectedTradeRouteId = null, selectedArmyId = null, activeSaveSlot = 1;
 let autoSaveEnabled = true, lastAutoSaveYear = 0, autoSavePending = false, indexesReady = false, renderDirty = true;
 let randomDisastersEnabled = true, disasterFrequency = "normal", nextDisasterYear = 10, worldSeed = "";
@@ -2078,9 +2079,12 @@ canvas.addEventListener("mousedown", e => {
 });
 window.addEventListener("mouseup", () => { dragging = false; painting = false; });
 canvas.addEventListener("mousemove", e => {
+  const hover = screenToGrid(e.clientX, e.clientY), hoverX = Math.floor(hover.x), hoverY = Math.floor(hover.y);
+  hoveredGrid = hoverX >= 0 && hoverY >= 0 && hoverX < MAP_W && hoverY < MAP_H ? { x: hoverX, y: hoverY } : null; renderDirty = true;
   if (dragging) { camera.x += e.clientX - lastMouse.x; camera.y += e.clientY - lastMouse.y; lastMouse = { x: e.clientX, y: e.clientY }; renderDirty = true; }
   if (painting && selectedTool !== "inspect" && selectedTool !== "meteor" && !raceDefs[selectedTool] && !animalDefs[selectedTool] && !disasterDefs[selectedTool]) { const p = screenToGrid(e.clientX, e.clientY); applyTool(p.x, p.y); }
 });
+canvas.addEventListener("mouseleave", () => { hoveredGrid = null; renderDirty = true; });
 canvas.addEventListener("wheel", e => {
   e.preventDefault(); const before = screenToGrid(e.clientX, e.clientY);
   camera.zoom = clamp(camera.zoom * (e.deltaY < 0 ? 1.12 : .89), .7, 4);

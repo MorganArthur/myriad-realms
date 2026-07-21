@@ -60,3 +60,12 @@ test("模拟、视图、存档和静态规则保持独立模块边界", () => {
 test("正式运行时代码不绕过种子随机数", () => {
   for (const [name, source] of Object.entries({ game, ui, persistence, config })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
 });
+
+test("视觉层保留工具分组、地图反馈与低动态适配", () => {
+  const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+  assert.equal([...html.matchAll(/class="tool-category/g)].length, 4);
+  assert.match(ui, /function renderMapCursor\(/);
+  assert.match(ui, /terrainVisualColors/);
+  assert.match(styles, /prefers-reduced-motion:\s*reduce/);
+  assert.match(styles, /\.world-wrap::before/);
+});

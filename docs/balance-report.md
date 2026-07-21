@@ -1,6 +1,6 @@
 # 数值平衡基线
 
-本报告记录 v0.10.0 的固定种子回归基线。测试直接加载正式的 `engine-core.js`、`world-config.js`、`game-ui.js`、`game-persistence.js` 和 `game.js`，每个样本从纪元 1 推进到纪元 50；随机天灾保持开启。
+本报告记录 v0.10.0 起沿用的固定种子回归基线。测试直接加载正式的 `engine-core.js`、`world-config.js`、`game-ui.js`、`game-persistence.js` 和 `game.js`，每个样本从纪元 1 推进到纪元 50；随机天灾保持开启。
 
 ## 最终结果
 

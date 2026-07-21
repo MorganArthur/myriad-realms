@@ -43,6 +43,7 @@ function inventoryHtml(village) {
 }
 
 function inspectAt(x, y) {
+  selectedGrid = { x: Math.floor(x), y: Math.floor(y) };
   selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null;
   const person = people.find(p => Math.hypot(p.x - x, p.y - y) < 1.5);
   const caravan = caravans.find(candidate => Math.hypot(candidate.x - x, candidate.y - y) < 1.35);
@@ -117,6 +118,13 @@ function inspectArmy(armyId) {
   box.classList.remove("empty");
   box.innerHTML = `<h4><span style="color:${kingdom?.color}">⚑</span> ${army.name}</h4><div class="detail-row"><span>将领</span><b>${general ? `★ #${general.id} · 统率 ${general.leadership.toFixed(2)}` : "等待任命"}</b></div><div class="detail-row"><span>状态 / 兵力</span><b>${statusLabels[army.status] || army.status} · ${members.length}</b></div><div class="detail-row"><span>集结地</span><b>${rally?.name || "野外"}</b></div><div class="detail-row"><span>战役目标</span><b>${target?.name || "暂无"}</b></div><div class="detail-row"><span>伤亡 / 攻城进度</span><b>${army.casualties || 0} / ${Math.floor(army.siegeProgress || 0)}</b></div><p class="muted unit-line">${unitLine}</p><div class="need-list">${needMeter("军团士气", army.morale)}${needMeter("军团补给", army.supply / Math.max(1, army.maxSupply) * 100)}</div>`;
 }
+
+const terrainVisualColors = Object.freeze({
+  deep: ["#173c58", "#193f5b", "#153951", "#1a425d"], water: ["#23617a", "#28677e", "#205b73", "#2a6a80"],
+  sand: ["#c6ad69", "#cbb471", "#bea462", "#d0b976"], grass: ["#679344", "#6d9949", "#608b40", "#719d4c"],
+  forest: ["#315d32", "#356436", "#2c572e", "#39683a"], mountain: ["#777966", "#7d7f6b", "#6f7260", "#858673"],
+  ash: ["#3d3a34", "#454139", "#37342f", "#49443b"]
+});
 
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
@@ -222,6 +230,20 @@ function renderStructures(m) {
   }
 }
 
+function renderMapCursor(m) {
+  const drawCell = (cell, color, alpha, dashed = false) => {
+    if (!cell || cell.x < 0 || cell.y < 0 || cell.x >= MAP_W || cell.y >= MAP_H) return;
+    const sx = Math.floor(m.ox + cell.x * m.size), sy = Math.floor(m.oy + cell.y * m.size);
+    ctx.save(); ctx.fillStyle = color; ctx.globalAlpha = alpha; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size));
+    ctx.globalAlpha = .95; ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, Math.min(2, m.size * .18));
+    if (dashed) ctx.setLineDash([Math.max(2, m.size * .35), Math.max(2, m.size * .25)]);
+    ctx.strokeRect(sx + .5, sy + .5, Math.max(1, m.size - 1), Math.max(1, m.size - 1)); ctx.restore();
+  };
+  drawCell(selectedGrid, "#f5ce69", .18);
+  const hoverColor = disasterDefs[selectedTool] || ["fire", "meteor"].includes(selectedTool) ? "#ee8067" : selectedTool === "water" ? "#72c9e7" : "#f8e5a2";
+  drawCell(hoveredGrid, hoverColor, .12, true);
+}
+
 function render() {
   const renderStarted = performance.now(), m = viewMetrics(); ctx.clearRect(0, 0, m.width, m.height); ctx.fillStyle = "#0f2534"; ctx.fillRect(0, 0, m.width, m.height);
   const seasonalTint = seasonDefs[climate.season]?.tint || null;
@@ -229,7 +251,8 @@ function render() {
   const minY = clamp(Math.floor(-m.oy / m.size), 0, MAP_H), maxY = clamp(Math.ceil((m.height - m.oy) / m.size), 0, MAP_H);
   for (let y = minY; y < maxY; y++) for (let x = minX; x < maxX; x++) {
     const t = tileAt(x, y), sx = Math.floor(m.ox + x * m.size), sy = Math.floor(m.oy + y * m.size);
-    ctx.fillStyle = t.fire ? terrainColors.fire : terrainColors[t.type]; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5));
+    const visualHash = (x * 37 + y * 61 + x * y * 3) % 19;
+    const palette = terrainVisualColors[t.type]; ctx.fillStyle = t.fire ? terrainColors.fire : palette?.[visualHash % palette.length] || terrainColors[t.type]; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5));
     if (seasonalTint && isLand(t) && !t.fire) { ctx.fillStyle = seasonalTint; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5)); }
     if (t.owner >= 0 && isLand(t)) { ctx.fillStyle = `${kingdoms[t.owner]?.color || "#fff"}35`; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
     if (t.owner >= 0 && m.size > 4) {
@@ -238,6 +261,13 @@ function render() {
       if (tileAt(x, y + 1)?.owner !== t.owner) { ctx.beginPath(); ctx.moveTo(sx, sy + m.size); ctx.lineTo(sx + m.size, sy + m.size); ctx.stroke(); }
     }
     if (isLand(t) && (t.biomass || 0) < .18) { ctx.fillStyle = "#6d593724"; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
+    if (isLand(t) && m.size > 3) {
+      const coastWidth = Math.max(1, m.size * .1); ctx.fillStyle = "#ecd48b70";
+      if (!isLand(tileAt(x, y - 1))) ctx.fillRect(sx, sy, m.size, coastWidth);
+      if (!isLand(tileAt(x - 1, y))) ctx.fillRect(sx, sy, coastWidth, m.size);
+    }
+    if (m.size > 5 && ["deep", "water"].includes(t.type) && visualHash % 7 === 0) { ctx.fillStyle = t.type === "deep" ? "#6ca6bc28" : "#a4d8dc38"; ctx.fillRect(sx + m.size * .18, sy + m.size * .38, m.size * .62, Math.max(1, m.size * .1)); }
+    if (m.size > 5 && t.type === "mountain") { ctx.fillStyle = "#a8aa9658"; ctx.beginPath(); ctx.moveTo(sx + m.size * .18, sy + m.size * .82); ctx.lineTo(sx + m.size * .55, sy + m.size * .18); ctx.lineTo(sx + m.size * .86, sy + m.size * .82); ctx.closePath(); ctx.fill(); }
     if (m.size > 7 && t.type === "forest" && (x * 7 + y * 11) % 4 === 0 && t.biomass > .25) { ctx.fillStyle = "#234825"; ctx.fillRect(sx + m.size * .35, sy + m.size * .15, Math.max(1,m.size*.35), Math.max(1,m.size*.55 * t.biomass)); }
   }
   renderTradeRoutes(m);
@@ -257,8 +287,10 @@ function render() {
   for (const v of villages) {
     const sx = m.ox + (v.x + .5) * m.size, sy = m.oy + (v.y + .5) * m.size, k = getKingdom(v.kingdom);
     if (sx < -30 || sy < -30 || sx > m.width + 30 || sy > m.height + 30) continue;
+    ctx.save(); ctx.fillStyle = "#0c100aa0"; ctx.beginPath(); ctx.ellipse(sx, sy + m.size * .68, m.size * 1.25, m.size * .52, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#3b2518"; ctx.fillRect(sx - m.size * .8, sy - m.size * .65, m.size * 1.6, m.size * 1.3);
-    ctx.fillStyle = k?.color || "#ddd"; ctx.fillRect(sx - m.size * .9, sy - m.size * .9, m.size * 1.8, m.size * .35);
+    ctx.strokeStyle = "#f4dd9c70"; ctx.lineWidth = Math.max(1, m.size * .12); ctx.strokeRect(sx - m.size * .8, sy - m.size * .65, m.size * 1.6, m.size * 1.3);
+    ctx.fillStyle = k?.color || "#ddd"; ctx.beginPath(); ctx.moveTo(sx - m.size, sy - m.size * .6); ctx.lineTo(sx, sy - m.size * 1.15); ctx.lineTo(sx + m.size, sy - m.size * .6); ctx.closePath(); ctx.fill(); ctx.restore();
     const maxHp = villageMaxHp(v);
     if (v.hp < maxHp * .9) { ctx.fillStyle = "#351a17"; ctx.fillRect(sx - m.size, sy + m.size, m.size * 2, Math.max(2, m.size * .2)); ctx.fillStyle = "#d65a43"; ctx.fillRect(sx - m.size, sy + m.size, m.size * 2 * clamp(v.hp / maxHp, 0, 1), Math.max(2, m.size * .2)); }
     if (m.size > 5) { ctx.fillStyle = "#fff0c9"; ctx.font = `${Math.max(9, m.size * 1.25)}px Microsoft YaHei`; ctx.textAlign = "center"; ctx.fillText(v.name, sx, sy - m.size * 1.3); }
@@ -279,6 +311,7 @@ function render() {
     if (p.isGeneral && m.size > 5) { ctx.fillStyle = "#ffe37d"; ctx.beginPath(); ctx.moveTo(sx, sy - r - 3); ctx.lineTo(sx + 2.5, sy - r + 1); ctx.lineTo(sx - 2.5, sy - r + 1); ctx.closePath(); ctx.fill(); }
     if (p.plague > 0 && m.size > 5) { ctx.strokeStyle = "#c2ed74"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2); ctx.stroke(); }
   }
+  renderMapCursor(m);
   const elapsed = performance.now() - renderStarted;
   performanceMetrics.renderMs = performanceMetrics.renderMs ? performanceMetrics.renderMs * .9 + elapsed * .1 : elapsed;
 }

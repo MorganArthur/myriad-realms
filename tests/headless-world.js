@@ -15,7 +15,7 @@ function createElement(id = "") {
     getBoundingClientRect() { return { left: 0, top: 0, width: 960, height: 640 }; },
     getContext() {
       const context = {};
-      for (const method of ["arc", "beginPath", "clearRect", "closePath", "fill", "fillRect", "fillText", "lineTo", "moveTo", "restore", "rotate", "save", "setLineDash", "setTransform", "stroke", "strokeRect", "translate"]) context[method] = () => {};
+      for (const method of ["arc", "beginPath", "clearRect", "closePath", "ellipse", "fill", "fillRect", "fillText", "lineTo", "moveTo", "restore", "rotate", "save", "setLineDash", "setTransform", "stroke", "strokeRect", "translate"]) context[method] = () => {};
       return context;
     }
   };
