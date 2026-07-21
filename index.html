@@ -73,6 +73,11 @@
             </select>
           </label>
         </div>
+        <div class="seed-controls">
+          <label for="worldSeedInput">世界种子</label>
+          <div><input id="worldSeedInput" type="text" maxlength="64" spellcheck="false" aria-describedby="seedHint" /><button id="randomSeedBtn" type="button" title="生成随机种子">↻</button></div>
+          <small id="seedHint">相同种子与操作会得到相同世界</small>
+        </div>
         <div class="separator"></div>
         <button id="newWorldBtn" class="wide-btn">生成新世界</button>
         <button id="saveBtn" class="wide-btn secondary">快速保存</button>
@@ -126,6 +131,7 @@
 
     <footer>
       <span id="worldName">无名世界</span>
+      <span id="worldSeedStat">种子尚未生成</span>
       <span id="saveStatus">尚未保存</span>
       <span id="performanceStat">性能监测初始化中</span>
       <span>原创沙盒原型 · 世界的一切都在实时演化</span>
@@ -143,6 +149,9 @@
     </div>
   </section>
   <script src="engine-core.js"></script>
+  <script src="world-config.js"></script>
+  <script src="game-ui.js"></script>
+  <script src="game-persistence.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

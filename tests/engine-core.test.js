@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 require("../engine-core.js");
-const { rand, randi, clamp, cleanText, smoothNoise, removeDeadEntities } = globalThis.WorldEngine;
+const { random, rand, randi, clamp, cleanText, setSeed, getRandomState, restoreRandomState, smoothNoise, removeDeadEntities } = globalThis.WorldEngine;
 
 test("数值工具保持边界", () => {
   assert.equal(clamp(-2, 0, 10), 0);
@@ -22,9 +22,21 @@ test("文本清理阻止标记注入并限制长度", () => {
 });
 
 test("噪声生成器返回稳定尺寸与有限值", () => {
+  setSeed("noise-shape");
   const noise = smoothNoise(12, 8, 2);
   assert.equal(noise.length, 96);
   assert.ok(noise.every(value => Number.isFinite(value) && value >= 0 && value <= 1));
+});
+
+test("种子随机数可复现并可从快照续接", () => {
+  setSeed("同一个世界");
+  const first = Array.from({ length: 8 }, random);
+  const checkpoint = getRandomState();
+  const continuation = Array.from({ length: 8 }, random);
+  setSeed("同一个世界");
+  assert.deepEqual(Array.from({ length: 8 }, random), first);
+  assert.equal(restoreRandomState(checkpoint), true);
+  assert.deepEqual(Array.from({ length: 8 }, random), continuation);
 });
 
 test("实体压缩原地移除死亡记录", () => {

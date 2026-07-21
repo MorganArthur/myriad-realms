@@ -1,10 +1,12 @@
 {
   "name": "myriad-realms",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "万象之境：浏览器端像素世界模拟器",
   "scripts": {
-    "check": "node --check engine-core.js && node --check game.js && node --test",
-    "test": "node --test"
+    "check": "node --check engine-core.js && node --check world-config.js && node --check game-ui.js && node --check game-persistence.js && node --check game.js && node --check scripts/run-balance.js && node --test",
+    "test": "node --test",
+    "balance": "node scripts/run-balance.js",
+    "balance:quick": "node scripts/run-balance.js --quick"
   }
 }
