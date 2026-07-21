@@ -106,7 +106,31 @@ const disasterDefs = {
 };
 const disasterIntervals = { rare: [15, 24], normal: [8, 14], frequent: [4, 8] };
 
+const achievementDefs = {
+  first_civilizations: { name: "文明火种", icon: "🏛", description: "世界中同时存在 4 个聚落", points: 5, unlocked: () => villages.length >= 4 },
+  many_peoples: { name: "万族共生", icon: "🌍", description: "四个种族都拥有至少 3 名成员", points: 10, unlocked: () => Object.keys(raceDefs).every(race => people.filter(person => person.race === race).length >= 3) },
+  living_world: { name: "万物有灵", icon: "🦋", description: "六种野生动物同时繁衍于世界", points: 10, unlocked: () => Object.keys(animalDefs).every(species => (animalCounts()[species] || 0) > 0) },
+  great_city: { name: "宏伟城镇", icon: "🏘", description: "出现一座三级聚落", points: 15, unlocked: () => villages.some(village => village.level >= 3) },
+  populous: { name: "生生不息", icon: "👥", description: "世界人口达到 50", points: 15, unlocked: () => people.length >= 50 },
+  master_builders: { name: "营造时代", icon: "🏗", description: "世界拥有 40 座实体建筑", points: 15, unlocked: () => structureTotal() >= 40 },
+  first_trade: { name: "商路初开", icon: "⚖", description: "完成第一笔商队交付", points: 10, unlocked: () => worldStats.tradeDeliveries >= 1 },
+  first_alliance: { name: "盟约之证", icon: "🤝", description: "两个国家缔结同盟", points: 10, unlocked: () => hasRelationStatus("alliance") },
+  first_war: { name: "兵戈年代", icon: "⚔", description: "见证一场战争爆发", points: 10, unlocked: () => worldStats.warsStarted >= 1 || hasRelationStatus("war") },
+  survivor: { name: "劫后余生", icon: "🛡", description: "完整经历一次天灾", points: 10, unlocked: () => worldStats.disastersSurvived >= 1 },
+  rebellion: { name: "旧邦新生", icon: "✊", description: "见证一个叛乱政权诞生", points: 15, unlocked: () => worldStats.rebellions >= 1 },
+  century: { name: "百年史诗", icon: "📜", description: "世界延续到纪元 100", points: 25, unlocked: () => year >= 100 }
+};
+const worldGoalDefs = {
+  settlement_network: { name: "拓土成邦", description: "建立 6 个聚落", icon: "🏘", target: 6, points: 20, value: () => villages.length },
+  thriving_population: { name: "人烟繁盛", description: "世界人口达到 60", icon: "👥", target: 60, points: 25, value: () => people.length },
+  age_of_builders: { name: "百工兴盛", description: "建成 60 座实体建筑", icon: "🏗", target: 60, points: 25, value: () => structureTotal() },
+  caravan_age: { name: "商路纵横", description: "完成 10 次商队交付", icon: "🐫", target: 10, points: 25, value: () => worldStats.tradeDeliveries },
+  resilient_world: { name: "不屈世界", description: "度过 3 场天灾", icon: "🛡", target: 3, points: 30, value: () => worldStats.disastersSurvived },
+  long_history: { name: "世纪文明", description: "抵达纪元 100", icon: "📜", target: 100, points: 40, value: () => Math.floor(year) }
+};
+
 let tiles = [], people = [], animals = [], villages = [], kingdoms = [], events = [], activeDisasters = [], tradeRoutes = [], caravans = [], armies = [];
+let chronicle = [], worldStats = createWorldStats(), worldProgress = createWorldProgress();
 let year = 1, ticks = 0, running = false, speed = 1, selectedTool = "inspect", brushSize = 2;
 let climate = { season: "spring", weather: "clear", temperature: 16, rainfall: .72, seasonProgress: 0, weatherUntil: 1.8, nextWeatherYear: 1.8 };
 let camera = { x: 0, y: 0, zoom: 1 }, dragging = false, lastMouse = null, painting = false;
@@ -128,6 +152,55 @@ const peopleOfKingdom = id => indexesReady ? (worldIndex.peopleByKingdom.get(id)
 const villagesOfKingdom = id => indexesReady ? (worldIndex.villagesByKingdom.get(id) || []) : villages.filter(v => v.kingdom === id);
 const spatialKey = (x, y) => `${Math.floor(x / 6)},${Math.floor(y / 6)}`;
 const cleanText = value => String(value ?? "").replace(/[<>&"']/g, "").slice(0, 120);
+
+function createWorldStats() {
+  return {
+    births: 0, deaths: 0, villagesFounded: 0, villagesCaptured: 0, buildingsConstructed: 0, buildingsDestroyed: 0,
+    tradeDeliveries: 0, tradeVolume: 0, warsStarted: 0, warsEnded: 0, disastersTriggered: 0, disastersSurvived: 0, rebellions: 0,
+    peakPopulation: 0, peakVillages: 0, peakKingdoms: 0, peakAnimals: 0
+  };
+}
+
+function createWorldProgress() { return { achievements: {}, completedGoals: {}, renown: 0 }; }
+
+function structureTotal() {
+  let total = 0;
+  for (const village of villages) for (const structure of village.structures || []) if (structure.hp > 0) total++;
+  return total;
+}
+
+function hasRelationStatus(status) {
+  for (let i = 0; i < kingdoms.length; i++) for (let j = i + 1; j < kingdoms.length; j++) {
+    if (!kingdoms[i].defeated && !kingdoms[j].defeated && relationBetween(kingdoms[i].id, kingdoms[j].id)?.status === status) return true;
+  }
+  return false;
+}
+
+function updateWorldRecords() {
+  const activeKingdoms = kingdoms.filter(kingdom => !kingdom.defeated).length;
+  worldStats.peakPopulation = Math.max(worldStats.peakPopulation, people.length);
+  worldStats.peakVillages = Math.max(worldStats.peakVillages, villages.length);
+  worldStats.peakKingdoms = Math.max(worldStats.peakKingdoms, activeKingdoms);
+  worldStats.peakAnimals = Math.max(worldStats.peakAnimals, animals.length);
+}
+
+function evaluateWorldProgress(announce = true) {
+  updateWorldRecords();
+  for (const [id, achievement] of Object.entries(achievementDefs)) {
+    if (worldProgress.achievements[id] || !achievement.unlocked()) continue;
+    worldProgress.achievements[id] = { year: Math.floor(year) };
+    worldProgress.renown += achievement.points;
+    addEvent(`${achievement.icon} 达成成就“${achievement.name}”：${achievement.description}。`, "achievement");
+    if (announce) showToast(`成就解锁：${achievement.name}  +${achievement.points} 声望`);
+  }
+  for (const [id, goal] of Object.entries(worldGoalDefs)) {
+    if (worldProgress.completedGoals[id] || goal.value() < goal.target) continue;
+    worldProgress.completedGoals[id] = { year: Math.floor(year) };
+    worldProgress.renown += goal.points;
+    addEvent(`${goal.icon} 世界目标“${goal.name}”完成，获得 ${goal.points} 世界声望。`, "goal");
+    if (announce) showToast(`世界目标完成：${goal.name}  +${goal.points} 声望`);
+  }
+}
 
 function createWorldIndex() {
   return {
@@ -246,9 +319,14 @@ function relationBetween(aId, bId) {
 
 function setRelation(aId, bId, status, score, silent = false) {
   const a = getKingdom(aId), b = getKingdom(bId); if (!a || !b || aId === bId) return;
+  const previousStatus = relationBetween(aId, bId)?.status;
   const value = { status, score: clamp(Math.round(score), -100, 100), since: Math.floor(year) };
   a.relations[String(bId)] = { ...value };
   b.relations[String(aId)] = { ...value };
+  if (previousStatus && previousStatus !== status) {
+    if (status === "war") worldStats.warsStarted++;
+    if (previousStatus === "war" && status === "peace") worldStats.warsEnded++;
+  }
   if (!silent) {
     const phrase = status === "war" ? "正式开战" : status === "alliance" ? "缔结同盟" : "恢复和平";
     addEvent(`${a.name}与${b.name}${phrase}。`);
@@ -319,7 +397,7 @@ function generateWorld() {
     const latitudeTemperature = 29 - Math.abs(y / (MAP_H - 1) - .5) * 31;
     tiles.push({ type, fertility: type === "forest" ? 1 : type === "grass" ? .75 : .25, biomass, moisture: clamp(moisture[idx(x, y)], .08, .95), temperature: latitudeTemperature - (type === "mountain" ? 8 : 0) + rand(-1.5, 1.5), fire: 0, owner: -1 });
   }
-  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; tradeRoutes = []; caravans = []; armies = []; year = 1; ticks = 0; climate = { season: "spring", weather: "clear", temperature: 16, rainfall: .72, seasonProgress: 0, weatherUntil: 1.8, nextWeatherYear: 1.8 }; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextArmyId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; indexesReady = false; lastAutoSaveYear = 1;
+  people = []; animals = []; villages = []; kingdoms = []; events = []; chronicle = []; activeDisasters = []; tradeRoutes = []; caravans = []; armies = []; worldStats = createWorldStats(); worldProgress = createWorldProgress(); year = 1; ticks = 0; climate = { season: "spring", weather: "clear", temperature: 16, rainfall: .72, seasonProgress: 0, weatherUntil: 1.8, nextWeatherYear: 1.8 }; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextArmyId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; indexesReady = false; lastAutoSaveYear = 1;
   camera = { x: 0, y: 0, zoom: 1 };
   const valid = habitableTileIndices();
   const anchors = [];
@@ -351,6 +429,7 @@ function generateWorld() {
   document.getElementById("saveStatus").textContent = "尚未保存";
   addEvent("新的世界从混沌中苏醒。");
   addEvent("第一批流浪者踏上了大陆。");
+  evaluateWorldProgress(false);
   updateUI(); render();
 }
 
@@ -385,9 +464,12 @@ function populateWildlife(validTiles) {
   }
 }
 
-function addEvent(text) {
-  events.unshift({ year: Math.max(1, Math.floor(year)), text });
+function addEvent(text, kind = "event") {
+  const entry = { year: Math.max(1, Math.floor(year)), text: cleanText(text), kind };
+  events.unshift(entry);
   events = events.slice(0, 14);
+  chronicle.unshift(entry);
+  chronicle = chronicle.slice(0, 240);
 }
 
 function emptyBuildingCounts() {
@@ -457,6 +539,7 @@ function addStructureEntity(village, type, site = null) {
   village.structures ||= [];
   const structure = { id: nextStructureId++, type, x: site.x, y: site.y, hp: def.maxHp, maxHp: def.maxHp, builtYear: Math.floor(year) };
   village.structures.push(structure);
+  worldStats.buildingsConstructed++;
   const tile = tileAt(Math.round(site.x), Math.round(site.y)); if (tile && isLand(tile) && tile.owner < 0) tile.owner = village.kingdom;
   syncBuildingCounts(village); indexesReady = false;
   return structure;
@@ -504,6 +587,7 @@ function createVillage(founder) {
     buildCooldown: randi(8, 16), workforce: {}, averageHappiness: 60, unrest: 8
   };
   villages.push(village); founder.village = village.id; seedVillageStructures(village, village.buildings);
+  worldStats.villagesFounded++;
   claimTerritory(village, 3);
   addEvent(`${village.name}建立，炊烟第一次升起。`);
 }
@@ -603,6 +687,7 @@ function triggerRebellion(parent, village) {
     const tile = tileAt(x, y); if (tile?.owner === parent.id && Math.hypot(x - village.x, y - village.y) <= transferRadius) tile.owner = rebel.id;
   }
   parent.unrest = Math.max(35, parent.unrest - 18); parent.legitimacy = Math.max(0, parent.legitimacy - 15); parent.rebellionCooldownUntil = year + 8;
+  worldStats.rebellions++;
   setRelation(parent.id, rebel.id, "war", -88, true); addEvent(`${village.name}发动叛乱，脱离${parent.name}并建立${rebel.name}！`);
   updateMilitaryRoles(); updateTradeRoutes(); indexesReady = false; renderDirty = true;
   return rebel;
@@ -933,6 +1018,7 @@ function completeCaravan(caravan, route) {
     if (relation) { relation.score = clamp(relation.score + 1, -100, 100); getKingdom(destination.kingdom).relations[String(source.kingdom)].score = relation.score; }
   }
   route.deliveries++; route.delivered += caravan.amount + caravan.returnAmount; route.lastDeliveryYear = Math.floor(year);
+  worldStats.tradeDeliveries++; worldStats.tradeVolume += caravan.amount + caravan.returnAmount;
   if (route.deliveries === 1 || route.deliveries % 5 === 0) addEvent(`商队抵达${destination.name}，交付了${tradeResourceDefs[caravan.resource].name}${Math.floor(caravan.amount)}份。`);
   recalculateVillageMarket(source); recalculateVillageMarket(destination);
 }
@@ -1101,6 +1187,7 @@ function simulationStep() {
     if (home && person.role === "civilian" && person.age > 17 && person.food > 76 && person.happiness > 45 && !realm?.famine && realm?.resources.food > 10 && homePop < villageCapacity(home) && people.length < 800 && Math.random() < .0028 * race.birth * happinessBirthRate * seasonalBirthRate) {
       spawnPerson(person.x, person.y, person.kingdom, person.race);
       const baby = people[people.length - 1]; baby.age = 0; baby.village = person.village; baby.food = 60; baby.profession = "child"; baby.happiness = 68; baby.needs = { nutrition: 60, shelter: 78, safety: 72, health: 100 };
+      worldStats.births++;
       person.food -= 18; realm.resources.food = Math.max(0, realm.resources.food - 1.5);
     }
   }
@@ -1116,7 +1203,9 @@ function simulationStep() {
     t.fire--; t.biomass = Math.max(0, (t.biomass || 0) - .08);
     if (t.fire === 0) { t.type = "ash"; t.fertility = .12; t.biomass = 0; }
   }
+  worldStats.deaths += people.reduce((sum, person) => sum + (person.dead ? 1 : 0), 0);
   removeDeadEntities(people); removeDeadEntities(animals); rebuildWorldIndexes();
+  if (ticks % 20 === 0) evaluateWorldProgress();
   if (autoSaveEnabled && year - lastAutoSaveYear >= 5) { scheduleAutoSave(); lastAutoSaveYear = year; }
   renderDirty = true;
   if (ticks % 20 === 0) updateUI();
@@ -1283,6 +1372,7 @@ function damageStructure(village, structure, amount, announce = true) {
   if (structure.hp > 0 || structure.type === "hall") { structure.hp = Math.max(structure.type === "hall" ? 1 : 0, structure.hp); return false; }
   const def = buildingDefs[structure.type];
   village.structures = (village.structures || []).filter(candidate => candidate.id !== structure.id);
+  worldStats.buildingsDestroyed++;
   syncBuildingCounts(village); indexesReady = false;
   if (announce && def) addEvent(`${village.name}的一座${def.name}被摧毁。`);
   return true;
@@ -1379,6 +1469,7 @@ function triggerDisaster(type, x, y, randomSource = false) {
     const angle = rand(0, Math.PI * 2); disaster.dx = Math.cos(angle) * (.08 + intensity * .015); disaster.dy = Math.sin(angle) * (.08 + intensity * .015);
   }
   activeDisasters.push(disaster);
+  worldStats.disastersTriggered++;
   if (type === "earthquake") strikeEarthquake(disaster);
   if (type === "volcano") { initializeVolcano(disaster); volcanicBurst(disaster); }
   if (type === "plague") seedPlague(disaster);
@@ -1492,7 +1583,7 @@ function simulateDisasters() {
     if (disaster.type === "plague") simulatePlague(disaster);
     if (disaster.type === "drought") simulateDrought(disaster);
   }
-  for (const disaster of activeDisasters) if (disaster.duration <= 0) addEvent(`${disasterDefs[disaster.type].icon} ${disasterDefs[disaster.type].name}逐渐平息。`);
+  for (const disaster of activeDisasters) if (disaster.duration <= 0) { worldStats.disastersSurvived++; addEvent(`${disasterDefs[disaster.type].icon} ${disasterDefs[disaster.type].name}逐渐平息。`); }
   activeDisasters = activeDisasters.filter(disaster => disaster.duration > 0);
 }
 
@@ -1700,6 +1791,7 @@ function militaryBehavior(person) {
 function captureVillage(village, newKingdomId) {
   const oldKingdomId = village.kingdom; if (oldKingdomId === newKingdomId) return;
   const oldKingdom = getKingdom(oldKingdomId), newKingdom = getKingdom(newKingdomId);
+  worldStats.villagesCaptured++;
   village.kingdom = newKingdomId; village.hp = 100; village.unrest = Math.max(68, village.unrest || 0);
   if (oldKingdom) { oldKingdom.unrest = clamp((oldKingdom.unrest || 0) + 8, 0, 100); oldKingdom.legitimacy = Math.max(0, (oldKingdom.legitimacy || 60) - 6); }
   if (newKingdom) newKingdom.unrest = clamp((newKingdom.unrest || 0) + 3, 0, 100);
@@ -2132,6 +2224,22 @@ function updateUI() {
   }
   document.getElementById("warStat").textContent = warCount;
   document.getElementById("eventLog").innerHTML = events.map(e => `<div class="event"><time>纪元 ${e.year}</time>${e.text}</div>`).join("");
+  document.getElementById("renownStat").textContent = `✦ ${Math.floor(worldProgress.renown)}`;
+  document.getElementById("goalList").innerHTML = Object.entries(worldGoalDefs).map(([id, goal]) => {
+    const completed = Boolean(worldProgress.completedGoals[id]), value = Math.min(goal.target, Math.floor(goal.value())), percent = completed ? 100 : clamp(value / goal.target * 100, 0, 100);
+    return `<div class="goal-item ${completed ? "completed" : ""}"><div><b>${goal.icon} ${goal.name}${completed ? " ✓" : ""}</b><span>${goal.description} · +${goal.points} 声望</span></div><small>${value} / ${goal.target}</small><i><em style="width:${percent}%"></em></i></div>`;
+  }).join("");
+  const unlockedAchievements = Object.keys(worldProgress.achievements).length;
+  document.getElementById("achievementList").innerHTML = `<p class="achievement-summary">已解锁 ${unlockedAchievements} / ${Object.keys(achievementDefs).length}</p>` + Object.entries(achievementDefs).map(([id, achievement]) => {
+    const record = worldProgress.achievements[id];
+    return `<div class="achievement-item ${record ? "unlocked" : "locked"}" title="${achievement.description}"><span>${record ? achievement.icon : "◇"}</span><div><b>${achievement.name}</b><small>${record ? `纪元 ${record.year} · +${achievement.points}` : achievement.description}</small></div></div>`;
+  }).join("");
+  document.getElementById("worldStatsList").innerHTML = [
+    ["出生", worldStats.births], ["逝者", worldStats.deaths], ["建立聚落", worldStats.villagesFounded], ["攻占聚落", worldStats.villagesCaptured],
+    ["建成建筑", worldStats.buildingsConstructed], ["损毁建筑", worldStats.buildingsDestroyed], ["商队交付", worldStats.tradeDeliveries], ["累计货运", Math.floor(worldStats.tradeVolume)],
+    ["爆发战争", worldStats.warsStarted], ["结束战争", worldStats.warsEnded], ["天灾降临", worldStats.disastersTriggered], ["安然度过", worldStats.disastersSurvived]
+  ].map(([label, value]) => `<span>${label}<b>${value}</b></span>`).join("");
+  document.getElementById("chronicleList").innerHTML = chronicle.length ? `<p class="chronicle-summary">共 ${chronicle.length} 条记录 · 保留最近 240 条</p>` + chronicle.slice(0, 30).map(entry => `<div class="event ${entry.kind || "event"}"><time>纪元 ${entry.year}</time>${entry.text}</div>`).join("") : `<p class="muted">历史尚未落笔</p>`;
   let sampledMoisture = 0, sampledFertility = 0, climateSamples = 0;
   for (let i = 0; i < tiles.length; i += 24) if (isLand(tiles[i])) { sampledMoisture += tiles[i].moisture || 0; sampledFertility += tiles[i].fertility || 0; climateSamples++; }
   const averageMoisture = climateSamples ? sampledMoisture / climateSamples * 100 : 0, averageFertility = climateSamples ? sampledFertility / climateSamples * 100 : 0, cropYield = season.crops * weather.crops * 100;
@@ -2195,10 +2303,10 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 10, savedAt: new Date().toISOString(),
-    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, season: climate.season, weather: climate.weather },
+    version: 11, savedAt: new Date().toISOString(),
+    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length },
     worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1, round3(t.moisture), round3(t.temperature)]), climate,
-    people, animals, villages, kingdoms, events, activeDisasters, tradeRoutes, caravans, armies, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextDisasterId, nextDisasterYear,
+    people, animals, villages, kingdoms, events, chronicle, worldStats, worldProgress, activeDisasters, tradeRoutes, caravans, armies, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextDisasterId, nextDisasterYear,
     settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency }
   };
 }
@@ -2223,6 +2331,13 @@ function scheduleAutoSave() {
 }
 
 function normalizeWorldData(sourceVersion = 1) {
+  worldStats = { ...createWorldStats(), ...(worldStats || {}) };
+  for (const key of Object.keys(createWorldStats())) worldStats[key] = Math.max(0, Number(worldStats[key]) || 0);
+  worldProgress = { ...createWorldProgress(), ...(worldProgress || {}) };
+  worldProgress.achievements = worldProgress.achievements && typeof worldProgress.achievements === "object" ? worldProgress.achievements : {};
+  worldProgress.completedGoals = worldProgress.completedGoals && typeof worldProgress.completedGoals === "object" ? worldProgress.completedGoals : {};
+  worldProgress.renown = Math.max(0, Number(worldProgress.renown) || 0);
+  chronicle = (Array.isArray(chronicle) && chronicle.length ? chronicle : events).filter(entry => entry && entry.text).slice(0, 240).map(entry => ({ year: Math.max(1, Number(entry.year) || 1), text: cleanText(entry.text), kind: ["event", "achievement", "goal"].includes(entry.kind) ? entry.kind : "event" }));
   nextStructureId = Math.max(1, Number(nextStructureId) || 1);
   nextTradeRouteId = Math.max(1, Number(nextTradeRouteId) || 1); nextCaravanId = Math.max(1, Number(nextCaravanId) || 1); nextArmyId = Math.max(1, Number(nextArmyId) || 1);
   const usedStructureIds = new Set();
@@ -2362,13 +2477,18 @@ function normalizeWorldData(sourceVersion = 1) {
     addEvent("野猪与赤狐种群迁入大陆，食物网出现新的竞争关系。");
   }
   rebuildWorldIndexes();
+  worldStats.villagesFounded = Math.max(worldStats.villagesFounded, villages.length);
+  worldStats.buildingsConstructed = Math.max(worldStats.buildingsConstructed, structureTotal());
+  worldStats.tradeDeliveries = Math.max(worldStats.tradeDeliveries, tradeRoutes.reduce((sum, route) => sum + (route.deliveries || 0), 0));
+  worldStats.tradeVolume = Math.max(worldStats.tradeVolume, tradeRoutes.reduce((sum, route) => sum + (route.delivered || 0), 0));
+  evaluateWorldProgress(sourceVersion >= 11);
 }
 
 function restoreWorld(save, slot = activeSaveSlot) {
   if (!save || !Array.isArray(save.tiles) || !Array.isArray(save.people) || !Array.isArray(save.villages) || !Array.isArray(save.kingdoms)) throw new Error("invalid save");
   if (save.tiles.length !== MAP_W * MAP_H || save.people.length > 5000 || (save.animals?.length || 0) > 5000) throw new Error("unsupported save size");
   tiles = save.tiles.map(t => Array.isArray(t) ? { type: t[0], fertility: t[1], biomass: t[2], fire: t[3], owner: t[4], moisture: t[5], temperature: t[6] } : t);
-  people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; tradeRoutes = Array.isArray(save.tradeRoutes) ? save.tradeRoutes : []; caravans = Array.isArray(save.caravans) ? save.caravans : []; armies = Array.isArray(save.armies) ? save.armies : []; indexesReady = false;
+  people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; chronicle = save.chronicle || []; worldStats = save.worldStats || createWorldStats(); worldProgress = save.worldProgress || createWorldProgress(); activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; tradeRoutes = Array.isArray(save.tradeRoutes) ? save.tradeRoutes : []; caravans = Array.isArray(save.caravans) ? save.caravans : []; armies = Array.isArray(save.armies) ? save.armies : []; indexesReady = false;
   year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; climate = save.climate || {}; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextStructureId = save.nextStructureId; nextTradeRouteId = save.nextTradeRouteId; nextCaravanId = save.nextCaravanId; nextArmyId = save.nextArmyId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
   const settings = save.settings || {};
   camera = settings.camera || { x: 0, y: 0, zoom: 1 }; speed = settings.speed || 1; selectedTool = settings.selectedTool || "inspect"; brushSize = settings.brushSize || 2;
@@ -2421,6 +2541,13 @@ function exportWorld() {
   link.href = url; link.download = `${document.getElementById("worldName").textContent}-纪元${Math.floor(year)}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); showToast("世界档案已导出");
 }
 
+function exportChronicle() {
+  const title = document.getElementById("worldName").textContent, lines = [...chronicle].reverse().map(entry => `纪元 ${entry.year}　${entry.text}`);
+  const header = `${title} · 世界编年史\n当前纪元：${Math.floor(year)}　世界声望：${Math.floor(worldProgress.renown)}\n\n`;
+  const blob = new Blob([header + lines.join("\n")], { type: "text/plain;charset=utf-8" }), url = URL.createObjectURL(blob), link = document.createElement("a");
+  link.href = url; link.download = `${title}-世界编年史.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); showToast("世界编年史已导出");
+}
+
 async function importWorld(file) {
   if (!file) return;
   try { const save = JSON.parse(await file.text()); restoreWorld(save, activeSaveSlot); saveWorld(activeSaveSlot, false); closeArchive(); showToast("外部世界已导入"); }
@@ -2456,6 +2583,7 @@ document.getElementById("disasterFrequency").addEventListener("change", e => {
   disasterFrequency = disasterIntervals[e.target.value] ? e.target.value : "normal"; localStorage.setItem("realm-disaster-frequency", disasterFrequency); scheduleNextDisaster(); updateUI();
 });
 document.getElementById("exportSaveBtn").addEventListener("click", exportWorld);
+document.getElementById("exportChronicleBtn").addEventListener("click", exportChronicle);
 document.getElementById("importSaveInput").addEventListener("change", e => { importWorld(e.target.files?.[0]); e.target.value = ""; });
 window.addEventListener("keydown", e => { if (e.key === "Escape") closeArchive(); });
 document.getElementById("kingdomList").addEventListener("click", e => {
