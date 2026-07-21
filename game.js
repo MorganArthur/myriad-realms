@@ -23,11 +23,17 @@ const animalDefs = {
 };
 const animalCaps = { rabbit: 220, deer: 120, wolf: 50, bear: 24 };
 const buildingDefs = {
-  house: { name: "住宅", icon: "⌂", wood: 24, stone: 5 },
-  farm: { name: "农场", icon: "▦", wood: 18, stone: 2 },
-  lumber: { name: "伐木场", icon: "♣", wood: 14, stone: 8 },
-  quarry: { name: "采石场", icon: "◆", wood: 20, stone: 6 },
-  barracks: { name: "兵营", icon: "⚔", wood: 32, stone: 18 }
+  hall: { name: "议事厅", icon: "▣", wood: 0, stone: 0, maxHp: 240, color: "#74513a", effect: "聚落的行政与防御核心" },
+  house: { name: "住宅", icon: "⌂", wood: 24, stone: 5, maxHp: 100, color: "#8b6544", effect: "提供 7 人居住容量" },
+  farm: { name: "农田", icon: "▦", wood: 18, stone: 2, maxHp: 75, color: "#c4a94f", effect: "提高农民产粮与储粮能力" },
+  lumber: { name: "伐木场", icon: "♣", wood: 14, stone: 8, maxHp: 90, color: "#55733c", effect: "提高伐木工木材产量" },
+  quarry: { name: "采石场", icon: "◆", wood: 20, stone: 6, maxHp: 115, color: "#777a73", effect: "提高矿工石料产量" },
+  barracks: { name: "兵营", icon: "⚔", wood: 32, stone: 18, maxHp: 145, color: "#773b32", effect: "训练士兵并扩大军队上限" },
+  road: { name: "道路", icon: "═", wood: 7, stone: 3, maxHp: 55, color: "#b49a6c", effect: "提高居民移动与建设效率" },
+  wall: { name: "城墙", icon: "▥", wood: 12, stone: 16, maxHp: 180, color: "#8c8d83", effect: "提高聚落防御与居民安全感" },
+  market: { name: "市场", icon: "⚖", wood: 30, stone: 9, maxHp: 125, color: "#b67555", effect: "扩大商贸收益并吸纳商人" },
+  dock: { name: "港口", icon: "⚓", wood: 36, stone: 9, maxHp: 135, color: "#587f8c", effect: "利用水域获得粮食与贸易加成" },
+  temple: { name: "神殿", icon: "✦", wood: 36, stone: 18, maxHp: 155, color: "#9b79a7", effect: "提高幸福、健康与灾后恢复" }
 };
 const professionDefs = {
   child: { name: "儿童", icon: "◌", color: "#d6c9a8" },
@@ -54,7 +60,7 @@ const disasterIntervals = { rare: [15, 24], normal: [8, 14], frequent: [4, 8] };
 let tiles = [], people = [], animals = [], villages = [], kingdoms = [], events = [], activeDisasters = [];
 let year = 1, ticks = 0, running = false, speed = 1, selectedTool = "inspect", brushSize = 2;
 let camera = { x: 0, y: 0, zoom: 1 }, dragging = false, lastMouse = null, painting = false;
-let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextDisasterId = 1, selectedKingdomId = null, activeSaveSlot = 1;
+let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextStructureId = 1, nextDisasterId = 1, selectedKingdomId = null, activeSaveSlot = 1;
 let autoSaveEnabled = true, lastAutoSaveYear = 0, autoSavePending = false, indexesReady = false, renderDirty = true;
 let randomDisastersEnabled = true, disasterFrequency = "normal", nextDisasterYear = 10;
 let worldIndex = createWorldIndex();
@@ -76,7 +82,7 @@ const cleanText = value => String(value ?? "").replace(/[<>&"']/g, "").slice(0, 
 function createWorldIndex() {
   return {
     kingdomById: new Map(), villageById: new Map(), peopleByVillage: new Map(), peopleByKingdom: new Map(), villagesByKingdom: new Map(),
-    peopleSpatial: new Map(), animalSpatial: new Map(), speciesCounts: Object.fromEntries(Object.keys(animalDefs).map(species => [species, 0]))
+    peopleSpatial: new Map(), animalSpatial: new Map(), structureByTile: new Map(), speciesCounts: Object.fromEntries(Object.keys(animalDefs).map(species => [species, 0]))
   };
 }
 
@@ -89,6 +95,7 @@ function rebuildWorldIndexes() {
   for (const kingdom of kingdoms) worldIndex.kingdomById.set(kingdom.id, kingdom);
   for (const village of villages) {
     worldIndex.villageById.set(village.id, village); addToIndex(worldIndex.villagesByKingdom, village.kingdom, village);
+    for (const structure of village.structures || []) addToIndex(worldIndex.structureByTile, `${Math.round(structure.x)},${Math.round(structure.y)}`, structure);
   }
   for (const person of people) {
     if (person.dead) continue;
@@ -101,6 +108,11 @@ function rebuildWorldIndexes() {
     if (worldIndex.speciesCounts[animal.species] !== undefined) worldIndex.speciesCounts[animal.species]++;
   }
   indexesReady = true;
+}
+
+function structureAt(x, y, type = null) {
+  const structures = indexesReady ? (worldIndex.structureByTile.get(`${Math.round(x)},${Math.round(y)}`) || []) : villages.flatMap(village => village.structures || []).filter(structure => Math.round(structure.x) === Math.round(x) && Math.round(structure.y) === Math.round(y));
+  return structures.find(structure => structure.hp > 0 && (!type || structure.type === type)) || null;
 }
 
 function animalCounts(forceFresh = false) {
@@ -209,7 +221,7 @@ function generateWorld() {
     const biomass = type === "forest" ? rand(.72, 1) : type === "grass" ? rand(.5, .88) : type === "sand" ? rand(.05, .16) : 0;
     tiles.push({ type, fertility: type === "forest" ? 1 : type === "grass" ? .75 : .25, biomass, fire: 0, owner: -1 });
   }
-  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; year = 1; ticks = 0; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextDisasterId = 1; selectedKingdomId = null; indexesReady = false; lastAutoSaveYear = 1;
+  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; year = 1; ticks = 0; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextDisasterId = 1; selectedKingdomId = null; indexesReady = false; lastAutoSaveYear = 1;
   camera = { x: 0, y: 0, zoom: 1 };
   const valid = habitableTileIndices();
   const anchors = [];
@@ -279,6 +291,104 @@ function addEvent(text) {
   events = events.slice(0, 14);
 }
 
+function emptyBuildingCounts() {
+  return Object.fromEntries(Object.keys(buildingDefs).map(type => [type, 0]));
+}
+
+function syncBuildingCounts(village) {
+  const counts = emptyBuildingCounts();
+  for (const structure of village.structures || []) if (buildingDefs[structure.type] && structure.hp > 0) counts[structure.type]++;
+  village.buildings = counts;
+  return counts;
+}
+
+function buildingCount(village, type) {
+  return village.buildings?.[type] || 0;
+}
+
+function villageMaxHp(village) {
+  return 160 + village.level * 50 + buildingCount(village, "wall") * 24;
+}
+
+function adjacentWaterCount(x, y) {
+  let water = 0;
+  for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if ((ox || oy) && ["water", "deep"].includes(tileAt(x + ox, y + oy)?.type)) water++;
+  return water;
+}
+
+function villageIsWaterfront(village) {
+  const radius = 10 + village.level * 2;
+  for (let y = village.y - radius; y <= village.y + radius; y++) for (let x = village.x - radius; x <= village.x + radius; x++) {
+    if (isLand(tileAt(x, y)) && adjacentWaterCount(x, y)) return true;
+  }
+  return false;
+}
+
+function structureSiteScore(village, type, x, y) {
+  const tile = tileAt(x, y), distance = Math.hypot(x - village.x, y - village.y);
+  if (!tile || (!isLand(tile) && type !== "dock") || tile.fire || (tile.owner >= 0 && tile.owner !== village.kingdom)) return -Infinity;
+  if ((village.structures || []).some(structure => structure.hp > 0 && Math.hypot(structure.x - x, structure.y - y) < .8)) return -Infinity;
+  if (type === "dock") {
+    const water = adjacentWaterCount(x, y); if (!isLand(tile) || !water) return -Infinity;
+    return water * 3 - distance * .12 + Math.random();
+  }
+  if (type !== "quarry" && tile.type === "mountain") return -Infinity;
+  if (type === "farm") return (tile.fertility || 0) * 5 + (tile.type === "grass" ? 2 : 0) - distance * .08 + Math.random();
+  if (type === "lumber") return (tile.type === "forest" ? 7 : (tile.biomass || 0) * 2) - distance * .08 + Math.random();
+  if (type === "quarry") return (tile.type === "mountain" ? 9 : 0) + [tileAt(x + 1, y), tileAt(x - 1, y), tileAt(x, y + 1), tileAt(x, y - 1)].filter(candidate => candidate?.type === "mountain").length * 2 - distance * .05 + Math.random();
+  if (type === "wall") return 6 - Math.abs(distance - (3.2 + village.level)) * 2 + Math.random();
+  return 4 - Math.abs(distance - 2.8) * .45 + (tile.type === "grass" ? .8 : 0) + Math.random();
+}
+
+function findStructureSite(village, type) {
+  if (type === "hall") return { x: village.x, y: village.y };
+  let best = null, bestScore = -Infinity;
+  const radius = type === "dock" || type === "quarry" ? 12 + village.level * 2 : 6 + village.level * 2;
+  for (let y = Math.max(0, village.y - radius); y <= Math.min(MAP_H - 1, village.y + radius); y++) for (let x = Math.max(0, village.x - radius); x <= Math.min(MAP_W - 1, village.x + radius); x++) {
+    if (Math.hypot(x - village.x, y - village.y) > radius) continue;
+    const score = structureSiteScore(village, type, x, y);
+    if (score > bestScore) { bestScore = score; best = { x, y }; }
+  }
+  return best;
+}
+
+function addStructureEntity(village, type, site = null) {
+  const def = buildingDefs[type]; if (!def) return null;
+  site ||= findStructureSite(village, type); if (!site) return null;
+  village.structures ||= [];
+  const structure = { id: nextStructureId++, type, x: site.x, y: site.y, hp: def.maxHp, maxHp: def.maxHp, builtYear: Math.floor(year) };
+  village.structures.push(structure);
+  const tile = tileAt(Math.round(site.x), Math.round(site.y)); if (tile && isLand(tile) && tile.owner < 0) tile.owner = village.kingdom;
+  syncBuildingCounts(village); indexesReady = false;
+  return structure;
+}
+
+function buildRoadProject(village, segmentLimit = 3) {
+  const destinations = (village.structures || []).filter(structure => !["hall", "road", "wall"].includes(structure.type)).sort((a, b) => Math.hypot(b.x - village.x, b.y - village.y) - Math.hypot(a.x - village.x, a.y - village.y));
+  const otherVillage = nearestEntity(villages, village.x, village.y, candidate => candidate.id !== village.id && candidate.kingdom === village.kingdom);
+  const target = destinations.find(structure => Math.hypot(structure.x - village.x, structure.y - village.y) > 2.2) || otherVillage;
+  if (!target) return 0;
+  const distance = Math.max(1, Math.ceil(Math.hypot(target.x - village.x, target.y - village.y))), created = [];
+  for (let step = 1; step < distance && created.length < segmentLimit; step++) {
+    const x = Math.round(village.x + (target.x - village.x) * step / distance), y = Math.round(village.y + (target.y - village.y) * step / distance), tile = tileAt(x, y);
+    if (!isLand(tile) || tile.type === "mountain" || structureAt(x, y)) continue;
+    const structure = addStructureEntity(village, "road", { x, y }); if (structure) created.push(structure);
+  }
+  return created.length;
+}
+
+function seedVillageStructures(village, legacyCounts) {
+  village.structures = [];
+  addStructureEntity(village, "hall", { x: village.x, y: village.y });
+  for (const type of ["house", "farm", "lumber", "quarry", "barracks", "wall", "market", "dock", "temple"]) {
+    const amount = clamp(Math.floor(Number(legacyCounts?.[type]) || 0), 0, 60);
+    for (let n = 0; n < amount; n++) if (!addStructureEntity(village, type)) break;
+  }
+  const roadAmount = clamp(Math.floor(Number(legacyCounts?.road) || 0), 0, 80);
+  for (let n = 0; n < roadAmount;) { const made = buildRoadProject(village, Math.min(3, roadAmount - n)); if (!made) break; n += made; }
+  syncBuildingCounts(village);
+}
+
 function createVillage(founder) {
   if (villages.some(v => Math.hypot(v.x - founder.x, v.y - founder.y) < 10)) return;
   let kingdom = getKingdom(founder.kingdom);
@@ -290,10 +400,10 @@ function createVillage(founder) {
     id: nextVillageId++, x: founder.x, y: founder.y,
     name: `${["河湾", "绿林", "星丘", "橡木", "晨风", "望海"][randi(0,5)]}村`,
     kingdom: kingdom.id, level: 1, hp: 160,
-    buildings: { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0 },
+    buildings: { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, road: 2, wall: 0, market: 0, dock: 0, temple: 0 }, structures: [],
     buildCooldown: randi(8, 16), workforce: {}, averageHappiness: 60
   };
-  villages.push(village); founder.village = village.id;
+  villages.push(village); founder.village = village.id; seedVillageStructures(village, village.buildings);
   claimTerritory(village, 3);
   addEvent(`${village.name}建立，炊烟第一次升起。`);
 }
@@ -341,11 +451,11 @@ function desiredProfessionCounts(village, adults) {
   const infected = peopleOfVillage(village.id).filter(person => person.plague > 0).length;
   return {
     farmer: Math.min(adults, Math.max(1, buildings.farm * 2 + (kingdom?.famine ? 1 : 0))),
-    healer: adults >= 7 ? Math.min(2, 1 + (infected >= 4 ? 1 : 0)) : 0,
-    builder: adults >= 3 ? Math.min(3, 1 + Math.floor(adults / 24)) : 0,
+    healer: adults >= 7 ? Math.min(3, 1 + (infected >= 4 ? 1 : 0) + Math.min(1, buildings.temple || 0)) : 0,
+    builder: adults >= 3 ? Math.min(4, 1 + Math.floor(adults / 24) + ((village.structures || []).some(structure => structure.hp < structure.maxHp * .7) ? 1 : 0)) : 0,
     lumberjack: Math.min(4, buildings.lumber * 2 + (terrain.forest >= 8 ? 1 : 0)),
     miner: Math.min(4, buildings.quarry * 2 + (terrain.mountain >= 3 ? 1 : 0)),
-    merchant: adults >= 10 ? Math.min(3, 1 + Math.floor(adults / 30)) : 0
+    merchant: adults >= 8 && ((buildings.market || 0) + (buildings.dock || 0) > 0) ? Math.min(4, 1 + buildings.market + buildings.dock + Math.floor(adults / 30)) : 0
   };
 }
 
@@ -378,6 +488,7 @@ function updateProfessions() {
 
 function performHealerWork(village, healerCount) {
   if (!healerCount) return;
+  healerCount += buildingCount(village, "temple") * .35;
   for (const person of peopleOfVillage(village.id)) {
     const maxHealth = person.blessed ? 140 : person.role === "soldier" ? 110 : 100;
     if (person.health < maxHealth) person.health = Math.min(maxHealth, person.health + healerCount * .28);
@@ -412,30 +523,32 @@ function updatePersonWellbeing(person, home, realm) {
   const residents = home ? peopleOfVillage(home.id).length : 0, capacity = home ? villageCapacity(home) : 1;
   const overcrowding = home ? Math.max(0, residents - capacity) / Math.max(1, capacity) : 1;
   const shelterTarget = home ? clamp(92 - overcrowding * 75, 15, 96) : 22;
-  const atWar = realm ? kingdomAtWar(realm.id) : false, danger = personNearDisaster(person);
-  const safetyTarget = clamp(88 - (atWar ? 24 : 0) - (danger ? 32 : 0) - (person.plague > 0 ? 18 : 0), 5, 96);
+  const atWar = realm ? kingdomAtWar(realm.id) : false, danger = personNearDisaster(person), walls = home ? buildingCount(home, "wall") : 0;
+  const safetyTarget = clamp(88 + Math.min(12, walls * 2.5) - (atWar ? 24 : 0) - (danger ? 32 : 0) - (person.plague > 0 ? 18 : 0), 5, 100);
   const maxHealth = person.blessed ? 140 : person.role === "soldier" ? 110 : 100, healthTarget = clamp(person.health / maxHealth * 100, 0, 100);
   person.needs.nutrition = person.food;
   person.needs.shelter += (shelterTarget - person.needs.shelter) * .04;
   person.needs.safety += (safetyTarget - person.needs.safety) * .05;
   person.needs.health += (healthTarget - person.needs.health) * .05;
   const employed = !["laborer", "child"].includes(person.profession) ? 6 : person.profession === "laborer" ? -3 : 0;
+  const civicBonus = home ? Math.min(10, buildingCount(home, "temple") * 4 + buildingCount(home, "market") * 1.5) : 0;
   const faminePenalty = realm?.famine ? 15 + (realm.famineLevel || 0) * .22 : 0;
-  const happinessTarget = clamp(person.needs.nutrition * .34 + person.needs.shelter * .22 + person.needs.safety * .22 + person.needs.health * .22 + employed + (person.blessed ? 8 : 0) - faminePenalty, 0, 100);
+  const happinessTarget = clamp(person.needs.nutrition * .34 + person.needs.shelter * .22 + person.needs.safety * .22 + person.needs.health * .22 + employed + civicBonus + (person.blessed ? 8 : 0) - faminePenalty, 0, 100);
   person.happiness += (happinessTarget - person.happiness) * .025;
   if (person.happiness < 10) person.health -= .015;
   else if (person.happiness > 82 && !person.plague) person.health = Math.min(maxHealth, person.health + .008);
 }
 
 function professionTileBias(person, x, y, tile, home) {
-  if (person.profession === "farmer") return (tile.fertility || 0) * .9 + (tile.type === "grass" ? .55 : 0);
-  if (person.profession === "lumberjack") return tile.type === "forest" ? 1.4 : 0;
+  const roadBonus = structureAt(x, y, "road") ? .9 : 0;
+  if (person.profession === "farmer") return roadBonus + (tile.fertility || 0) * .9 + (tile.type === "grass" ? .55 : 0);
+  if (person.profession === "lumberjack") return roadBonus + (tile.type === "forest" ? 1.4 : 0);
   if (person.profession === "miner") {
     let mountains = 0; for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (tileAt(x + ox, y + oy)?.type === "mountain") mountains++;
-    return mountains * .32;
+    return roadBonus + mountains * .32;
   }
-  if (["builder", "merchant", "healer"].includes(person.profession) && home) return Math.max(0, 6 - Math.hypot(x - home.x, y - home.y)) * .14;
-  return 0;
+  if (["builder", "merchant", "healer"].includes(person.profession) && home) return roadBonus + Math.max(0, 6 - Math.hypot(x - home.x, y - home.y)) * .14;
+  return roadBonus;
 }
 
 function produceResources() {
@@ -447,17 +560,21 @@ function produceResources() {
     for (const village of realmVillages) {
       const residents = peopleOfVillage(village.id), jobs = professionCounts(residents), terrain = ownedTerrainCounts(kingdom.id, village), b = village.buildings;
       const farmerOutput = jobs.farmer * (.55 + b.farm * .22), lumberOutput = jobs.lumberjack * (.48 + b.lumber * .24), minerOutput = jobs.miner * (.4 + b.quarry * .28);
-      food += (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food;
+      const dockOutput = b.dock * (.45 + residents.length * .018);
+      food += (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + dockOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food;
       wood += (terrain.forest * .018 + lumberOutput + jobs.laborer * .018) * race.wood;
       stone += (terrain.mountain * .014 + minerOutput) * race.stone;
-      village.buildCooldown -= 1 + jobs.builder * .42;
-      village.hp = Math.min(160 + village.level * 50, village.hp + jobs.builder * .08);
+      village.buildCooldown -= 1 + jobs.builder * .42 + Math.min(.7, b.road * .08);
+      village.hp = Math.min(villageMaxHp(village), village.hp + jobs.builder * .08 + b.temple * .02);
+      const damaged = (village.structures || []).filter(structure => structure.hp < structure.maxHp).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+      for (let repair = 0; repair < Math.min(damaged.length, Math.max(1, jobs.builder)); repair++) damaged[repair].hp = Math.min(damaged[repair].maxHp, damaged[repair].hp + jobs.builder * .55 + b.temple * .12);
       performHealerWork(village, jobs.healer);
       village.workforce = jobs; village.averageHappiness = averageHappiness(residents);
       if (village.buildCooldown <= 0) attemptConstruction(village, peopleOfVillage(village.id).length);
     }
     const allies = alliedKingdomCount(kingdom), merchants = realmVillages.reduce((sum, village) => sum + (village.workforce?.merchant || 0), 0);
-    const tradeBonus = 1 + allies * .055 + merchants * .018, warCost = 1 + Math.min(1, kingdom.warWeariness / 100);
+    const markets = realmVillages.reduce((sum, village) => sum + buildingCount(village, "market"), 0), docks = realmVillages.reduce((sum, village) => sum + buildingCount(village, "dock"), 0);
+    const tradeBonus = 1 + allies * .055 + merchants * .018 + markets * .035 + docks * .045, warCost = 1 + Math.min(1, kingdom.warWeariness / 100);
     const farms = realmVillages.reduce((sum, village) => sum + (village.buildings?.farm || 0), 0);
     const foodCapacity = 50 + realmPeople.length * 6 + realmVillages.length * 35 + farms * 45;
     const surplusSpoilage = Math.max(0, kingdom.resources.food - foodCapacity * .72) * .045;
@@ -472,21 +589,33 @@ function produceResources() {
 
 function attemptConstruction(village, population) {
   const kingdom = getKingdom(village.kingdom), b = village.buildings; if (!kingdom) return;
-  const terrain = ownedTerrainCounts(kingdom.id, village);
-  let choice = null;
-  if (kingdomAtWar(kingdom.id) && b.barracks < 1) choice = "barracks";
-  else if (population >= villageCapacity(village) - 3) choice = "house";
-  else if (kingdom.resources.food < Math.max(45, peopleOfKingdom(kingdom.id).length * 2.5)) choice = "farm";
-  else if (terrain.forest > 4 && b.lumber < Math.ceil(village.level / 2)) choice = "lumber";
-  else if (terrain.mountain > 2 && b.quarry < Math.ceil(village.level / 2)) choice = "quarry";
-  else if (peopleOfKingdom(kingdom.id).length > 8 && b.barracks < village.level) choice = "barracks";
-  else choice = ["house", "farm", "lumber", "quarry"][randi(0, 3)];
-  const def = buildingDefs[choice];
-  if (kingdom.resources.wood >= def.wood && kingdom.resources.stone >= def.stone) {
-    kingdom.resources.wood -= def.wood; kingdom.resources.stone -= def.stone; b[choice]++;
-    addEvent(`${kingdom.name}在${village.name}建成了${def.name}。`);
-    village.buildCooldown = randi(15, 28);
-  } else village.buildCooldown = randi(5, 10);
+  const terrain = ownedTerrainCounts(kingdom.id, village), realmPopulation = peopleOfKingdom(kingdom.id).length;
+  const choices = [], consider = (condition, type) => { if (condition && !choices.includes(type)) choices.push(type); };
+  consider(kingdomAtWar(kingdom.id) && b.barracks < 1, "barracks");
+  consider(kingdomAtWar(kingdom.id) && b.wall < Math.min(8, 2 + village.level * 2), "wall");
+  consider(population >= villageCapacity(village) - 3, "house");
+  consider(kingdom.resources.food < Math.max(45, realmPopulation * 2.5), "farm");
+  consider(terrain.forest > 4 && b.lumber < Math.ceil(village.level / 2), "lumber");
+  consider(terrain.mountain > 2 && b.quarry < Math.ceil(village.level / 2), "quarry");
+  consider(population >= 6 && b.market < Math.ceil(village.level / 2), "market");
+  consider(population >= 5 && b.dock < 1 && villageIsWaterfront(village), "dock");
+  consider(population >= 9 && b.temple < Math.ceil(village.level / 2), "temple");
+  consider(b.road < Math.min(10, 2 + Math.ceil((village.structures?.length || 1) / 2)), "road");
+  consider(village.level >= 2 && b.wall < village.level * 2, "wall");
+  consider(realmPopulation > 8 && b.barracks < village.level, "barracks");
+  for (const fallback of ["house", "farm", "lumber", "quarry", "road", "wall"]) consider(true, fallback);
+  for (const choice of choices) {
+    const def = buildingDefs[choice];
+    if (kingdom.resources.wood < def.wood || kingdom.resources.stone < def.stone) continue;
+    let created = 0;
+    if (choice === "road") created = buildRoadProject(village, 3);
+    else created = addStructureEntity(village, choice) ? 1 : 0;
+    if (!created) continue;
+    kingdom.resources.wood -= def.wood; kingdom.resources.stone -= def.stone;
+    addEvent(choice === "road" ? `${kingdom.name}在${village.name}铺设了${created}段道路。` : `${kingdom.name}在${village.name}建成了${def.name}。`);
+    village.buildCooldown = randi(15, 28); return;
+  }
+  village.buildCooldown = randi(5, 10);
 }
 
 function simulationStep() {
@@ -531,7 +660,7 @@ function simulationStep() {
             if (score > bestScore) { bestScore = score; bestX = person.x + ox; bestY = person.y + oy; }
           }
         }
-        if (bestScore > -Infinity && Math.random() < .72) { person.x = bestX; person.y = bestY; }
+            if (bestScore > -Infinity && Math.random() < .72) { person.x = bestX; person.y = bestY; if (structureAt(bestX, bestY, "road")) person.cooldown = Math.max(1, person.cooldown - 3); }
       }
     }
 
@@ -557,7 +686,8 @@ function simulationStep() {
   for (const village of villages) {
     const pop = peopleOfVillage(village.id).length;
     village.level = pop > 42 ? 3 : pop > 17 ? 2 : 1;
-    village.hp = Math.min(160 + village.level * 50, village.hp + .04);
+    village.hp = Math.min(villageMaxHp(village), village.hp + .04 + buildingCount(village, "temple") * .006);
+    if (ticks % 5 === 0) for (const structure of [...(village.structures || [])]) if (tileAt(Math.round(structure.x), Math.round(structure.y))?.fire > 0) damageStructure(village, structure, 3, false);
     if (ticks % 16 === 0) claimTerritory(village, 3 + village.level * 2);
   }
   for (const t of tiles) if (t.fire > 0) {
@@ -708,10 +838,31 @@ function forEachDisasterTile(disaster, callback, radius = disaster.radius) {
   }
 }
 
-function damageRandomBuilding(village, chance) {
-  if (Math.random() >= chance) return;
-  const candidates = ["house", "farm", "lumber", "quarry", "barracks"].filter(key => (village.buildings[key] || 0) > 0);
-  if (candidates.length) village.buildings[candidates[randi(0, candidates.length - 1)]]--;
+function damageStructure(village, structure, amount, announce = true) {
+  structure.hp -= Math.max(0, amount);
+  if (structure.hp > 0 || structure.type === "hall") { structure.hp = Math.max(structure.type === "hall" ? 1 : 0, structure.hp); return false; }
+  const def = buildingDefs[structure.type];
+  village.structures = (village.structures || []).filter(candidate => candidate.id !== structure.id);
+  syncBuildingCounts(village); indexesReady = false;
+  if (announce && def) addEvent(`${village.name}的一座${def.name}被摧毁。`);
+  return true;
+}
+
+function damageRandomBuilding(village, chance, amount = rand(22, 48), preferredType = null) {
+  if (Math.random() >= chance) return false;
+  let candidates = (village.structures || []).filter(structure => structure.hp > 0 && structure.type !== "hall");
+  if (preferredType && candidates.some(structure => structure.type === preferredType)) candidates = candidates.filter(structure => structure.type === preferredType);
+  if (!candidates.length) return false;
+  return damageStructure(village, candidates[randi(0, candidates.length - 1)], amount);
+}
+
+function damageStructuresInArea(disaster, baseDamage, chance = 1) {
+  for (const village of villages) {
+    for (const structure of [...(village.structures || [])]) {
+      const force = disasterFalloff(disaster, structure.x, structure.y); if (!force || Math.random() >= chance * force) continue;
+      damageStructure(village, structure, baseDamage * disaster.intensity * force);
+    }
+  }
 }
 
 function strikeEarthquake(disaster, aftershock = 1) {
@@ -726,8 +877,8 @@ function strikeEarthquake(disaster, aftershock = 1) {
   for (const village of villages) {
     const force = disasterFalloff(disaster, village.x, village.y); if (!force) continue;
     village.hp = Math.max(5, village.hp - rand(8, 18) * disaster.intensity * force * aftershock);
-    damageRandomBuilding(village, .1 * disaster.intensity * force * aftershock);
   }
+  damageStructuresInArea(disaster, rand(7, 14) * aftershock, .42 * aftershock);
   forEachDisasterTile(disaster, tile => {
     if (!isLand(tile)) return; tile.biomass = Math.max(0, (tile.biomass || 0) * rand(.7, .94)); tile.fertility = Math.max(.05, tile.fertility - .015 * aftershock);
   });
@@ -758,8 +909,9 @@ function volcanicBurst(disaster) {
   }
   for (const village of villages) {
     const force = disasterFalloff(disaster, village.x, village.y, burstRadius); if (!force) continue;
-    village.hp = Math.max(5, village.hp - rand(2, 5) * disaster.intensity * force); damageRandomBuilding(village, .045 * disaster.intensity * force);
+    village.hp = Math.max(5, village.hp - rand(2, 5) * disaster.intensity * force);
   }
+  damageStructuresInArea(disaster, rand(4, 9), .26);
 }
 
 function seedPlague(disaster) {
@@ -819,8 +971,8 @@ function simulateFlood(disaster) {
   for (const village of villages) {
     const force = disasterFalloff(disaster, village.x, village.y); if (!force) continue;
     village.hp = Math.max(5, village.hp - .11 * disaster.intensity * force);
-    if (disaster.age % 45 === 0) damageRandomBuilding(village, .08 * disaster.intensity * force);
   }
+  if (disaster.age % 45 === 0) damageStructuresInArea(disaster, 8, .28);
 }
 
 function simulateTornado(disaster) {
@@ -841,8 +993,8 @@ function simulateTornado(disaster) {
   for (const village of villages) {
     const force = disasterFalloff(disaster, village.x, village.y); if (!force) continue;
     village.hp = Math.max(5, village.hp - .38 * disaster.intensity * force);
-    if (disaster.age % 20 === 0) damageRandomBuilding(village, .1 * disaster.intensity * force);
   }
+  if (disaster.age % 20 === 0) damageStructuresInArea(disaster, 11, .34);
   forEachDisasterTile(disaster, tile => { if (isLand(tile)) tile.biomass = Math.max(0, (tile.biomass || 0) - .035 * disaster.intensity); });
 }
 
@@ -939,7 +1091,7 @@ function walkToward(person, targetX, targetY) {
     if (!ox && !oy) continue;
     const x = person.x + ox, y = person.y + oy, t = tileAt(x, y);
     if (isLand(t) && t.type !== "mountain" && !t.fire) {
-      const distance = Math.hypot(x - targetX, y - targetY) + Math.random() * .7;
+      const distance = Math.hypot(x - targetX, y - targetY) + Math.random() * .7 - (structureAt(x, y, "road") ? .55 : 0);
       if (distance < bestDistance) { bestDistance = distance; bestX = x; bestY = y; }
     }
   }
@@ -963,7 +1115,9 @@ function militaryBehavior(person) {
   if (!target) return;
   const distance = Math.hypot(target.x - person.x, target.y - person.y);
   if (distance <= 2 && person.attackCooldown <= 0) {
-    target.hp -= rand(2, 5); person.attackCooldown = 5;
+    const walls = buildingCount(target, "wall"), siegeDamage = rand(2, 5) / (1 + walls * .2);
+    target.hp -= siegeDamage; person.attackCooldown = 5;
+    if (walls && Math.random() < .12) damageRandomBuilding(target, 1, rand(3, 8), "wall");
     if (target.hp <= 0) captureVillage(target, person.kingdom);
   } else walkToward(person, target.x, target.y);
 }
@@ -972,12 +1126,14 @@ function captureVillage(village, newKingdomId) {
   const oldKingdomId = village.kingdom; if (oldKingdomId === newKingdomId) return;
   const oldKingdom = getKingdom(oldKingdomId), newKingdom = getKingdom(newKingdomId);
   village.kingdom = newKingdomId; village.hp = 100;
-  village.buildings.house = Math.max(1, village.buildings.house - 1);
+  const capturedHouse = (village.structures || []).find(structure => structure.type === "house");
+  if (capturedHouse && buildingCount(village, "house") > 1) damageStructure(village, capturedHouse, capturedHouse.maxHp, false);
   for (let position = 0; position < tiles.length; position++) {
     const t = tiles[position]; if (t.owner !== oldKingdomId) continue;
     const x = position % MAP_W, y = Math.floor(position / MAP_W);
     if (Math.hypot(x - village.x, y - village.y) < 8) t.owner = newKingdomId;
   }
+  for (const structure of village.structures || []) { const tile = tileAt(Math.round(structure.x), Math.round(structure.y)); if (tile && isLand(tile)) tile.owner = newKingdomId; }
   for (const resident of peopleOfVillage(village.id)) {
     if (resident.role === "civilian" && Math.random() < .7) resident.kingdom = newKingdomId;
   }
@@ -1100,6 +1256,12 @@ function inspectAt(x, y) {
   selectedKingdomId = null;
   const person = people.find(p => Math.hypot(p.x - x, p.y - y) < 1.5);
   const animal = animals.find(a => Math.hypot(a.x - x, a.y - y) < 1.5);
+  let inspectedStructure = null, inspectedStructureVillage = null, inspectedDistance = Infinity;
+  for (const candidateVillage of villages) for (const structure of candidateVillage.structures || []) {
+    if (structure.type === "hall") continue;
+    const distance = Math.hypot(structure.x - x, structure.y - y);
+    if (distance < .9 && distance < inspectedDistance) { inspectedStructure = structure; inspectedStructureVillage = candidateVillage; inspectedDistance = distance; }
+  }
   const village = villages.find(v => Math.hypot(v.x - x, v.y - y) < 2);
   const box = document.getElementById("selectionCard"); box.classList.remove("empty");
   if (person) {
@@ -1109,9 +1271,12 @@ function inspectAt(x, y) {
   } else if (animal) {
     const def = animalDefs[animal.species];
     box.innerHTML = `<h4>${def.icon} ${def.name} #${animal.id}</h4><div class="detail-row"><span>年龄</span><b>${animal.age.toFixed(1)} 岁</b></div><div class="detail-row"><span>生命</span><b>${Math.max(0, Math.floor(animal.health))}</b></div><div class="detail-row"><span>饱食度</span><b>${Math.floor(animal.hunger)}%</b></div><div class="detail-row"><span>食性</span><b>${def.diet === "herbivore" ? "草食" : "捕食"}</b></div>`;
+  } else if (inspectedStructure) {
+    const def = buildingDefs[inspectedStructure.type], kingdom = getKingdom(inspectedStructureVillage.kingdom), integrity = inspectedStructure.hp / inspectedStructure.maxHp * 100;
+    box.innerHTML = `<h4>${def.icon} ${def.name} #${inspectedStructure.id}</h4><div class="detail-row"><span>所属聚落</span><b>${inspectedStructureVillage.name}</b></div><div class="detail-row"><span>所属王国</span><b>${kingdom?.name || "无主"}</b></div><div class="detail-row"><span>建造纪元</span><b>${inspectedStructure.builtYear}</b></div><div class="detail-row"><span>坐标</span><b>${inspectedStructure.x}, ${inspectedStructure.y}</b></div><div class="need-list">${needMeter("建筑耐久", integrity)}</div><p class="muted">${def.effect}</p>`;
   } else if (village) {
     const k = getKingdom(village.kingdom), pop = peopleOfVillage(village.id).length, b = village.buildings;
-    box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(village.averageHappiness || 0)}</b></div><div class="detail-row"><span>防御 / 规模</span><b>${Math.round(village.hp)} · ${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="building-grid">${Object.entries(buildingDefs).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div><h3>劳动力</h3><div class="profession-list">${workforceHtml(village.workforce || {})}</div>`;
+    box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(village.averageHappiness || 0)}</b></div><div class="detail-row"><span>防御 / 规模</span><b>${Math.round(village.hp)} / ${villageMaxHp(village)} · ${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="building-grid">${Object.entries(buildingDefs).filter(([key]) => (b[key] || 0) > 0).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div><h3>劳动力</h3><div class="profession-list">${workforceHtml(village.workforce || {})}</div>`;
   } else {
     const t = tileAt(x, y), labels = { deep:"深海",water:"浅海",sand:"沙滩",grass:"草原",forest:"森林",mountain:"山地",ash:"焦土" };
     box.innerHTML = `<h4>▦ ${labels[t?.type] || "世界之外"}</h4><div class="detail-row"><span>坐标</span><b>${x}, ${y}</b></div><div class="detail-row"><span>肥沃度</span><b>${Math.round((t?.fertility || 0) * 100)}%</b></div><div class="detail-row"><span>植被量</span><b>${Math.round((t?.biomass || 0) * 100)}%</b></div>`;
@@ -1130,9 +1295,10 @@ function inspectKingdom(kingdomId) {
   }
   const demographics = Object.entries(raceDefs).map(([key, def]) => `${def.icon}${raceCounts[key]}`).join(" ");
   const jobs = professionCounts(citizens), happiness = averageHappiness(citizens);
+  const structures = realmVillages.flatMap(village => village.structures || []), roads = structures.filter(structure => structure.type === "road").length, walls = structures.filter(structure => structure.type === "wall").length;
   const relations = Object.entries(kingdom.relations || {}).map(([id, r]) => `${getKingdom(Number(id))?.name || "未知"}：${statusLabels[r.status]}`).join(" · ") || "尚无外交关系";
   box.classList.remove("empty");
-  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>主体种族</span><b>${race.name}</b></div><div class="detail-row"><span>人口 / 军队</span><b>${citizens.length} / ${soldiers}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(happiness)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落</span><b>${realmVillages.length}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
+  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>主体种族</span><b>${race.name}</b></div><div class="detail-row"><span>人口 / 军队</span><b>${citizens.length} / ${soldiers}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(happiness)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
 }
 
 function resizeCanvas() {
@@ -1151,6 +1317,43 @@ function screenToGrid(clientX, clientY) {
   return { x: (clientX - rect.left - m.ox) / m.size, y: (clientY - rect.top - m.oy) / m.size };
 }
 
+function renderStructures(m) {
+  for (const village of villages) for (const structure of village.structures || []) {
+    if (structure.type === "hall" || structure.hp <= 0) continue;
+    const def = buildingDefs[structure.type], sx = m.ox + (structure.x + .5) * m.size, sy = m.oy + (structure.y + .5) * m.size;
+    if (!def || sx < -16 || sy < -16 || sx > m.width + 16 || sy > m.height + 16) continue;
+    const size = Math.max(2, m.size * .72), integrity = clamp(structure.hp / structure.maxHp, .25, 1);
+    ctx.save(); ctx.globalAlpha = .55 + integrity * .45; ctx.fillStyle = def.color; ctx.strokeStyle = "#2b241c"; ctx.lineWidth = Math.max(1, m.size * .12);
+    if (structure.type === "road") {
+      ctx.fillStyle = def.color; ctx.fillRect(sx - m.size * .55, sy - m.size * .16, m.size * 1.1, m.size * .32); ctx.fillRect(sx - m.size * .16, sy - m.size * .55, m.size * .32, m.size * 1.1);
+    } else if (structure.type === "wall") {
+      ctx.fillRect(sx - size * .58, sy - size * .3, size * 1.16, size * .6); ctx.strokeRect(sx - size * .58, sy - size * .3, size * 1.16, size * .6);
+      ctx.fillStyle = "#b8b5a7"; ctx.fillRect(sx - size * .5, sy - size * .42, size * .22, size * .22); ctx.fillRect(sx + size * .28, sy - size * .42, size * .22, size * .22);
+    } else if (structure.type === "farm") {
+      ctx.fillRect(sx - size * .6, sy - size * .48, size * 1.2, size * .96); ctx.strokeStyle = "#7c6a31";
+      for (let line = -1; line <= 1; line++) { ctx.beginPath(); ctx.moveTo(sx - size * .5, sy + line * size * .25); ctx.lineTo(sx + size * .5, sy + line * size * .25); ctx.stroke(); }
+    } else if (structure.type === "dock") {
+      ctx.fillRect(sx - size * .55, sy - size * .2, size * 1.1, size * .4); ctx.fillRect(sx - size * .12, sy - size * .65, size * .24, size * 1.3);
+      ctx.fillStyle = "#d6d0ac"; ctx.fillRect(sx + size * .25, sy - size * .42, size * .12, size * .28);
+    } else if (structure.type === "market") {
+      ctx.fillRect(sx - size * .55, sy - size * .15, size * 1.1, size * .65); ctx.fillStyle = getKingdom(village.kingdom)?.color || "#d5c18a";
+      ctx.beginPath(); ctx.moveTo(sx - size * .65, sy - size * .12); ctx.lineTo(sx, sy - size * .68); ctx.lineTo(sx + size * .65, sy - size * .12); ctx.closePath(); ctx.fill();
+    } else if (structure.type === "temple") {
+      ctx.fillRect(sx - size * .4, sy - size * .15, size * .8, size * .65); ctx.beginPath(); ctx.moveTo(sx - size * .55, sy - size * .15); ctx.lineTo(sx, sy - size * .75); ctx.lineTo(sx + size * .55, sy - size * .15); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#eadb91"; ctx.fillRect(sx - size * .07, sy - size * .68, size * .14, size * .25);
+    } else if (structure.type === "quarry") {
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.PI / 4); ctx.fillRect(-size * .42, -size * .42, size * .84, size * .84); ctx.strokeRect(-size * .42, -size * .42, size * .84, size * .84); ctx.restore();
+    } else if (structure.type === "lumber") {
+      for (let log = -1; log <= 1; log++) ctx.fillRect(sx - size * .55, sy + log * size * .22 - size * .08, size * 1.1, size * .16);
+    } else {
+      ctx.fillRect(sx - size * .5, sy - size * .35, size, size * .85); ctx.strokeRect(sx - size * .5, sy - size * .35, size, size * .85);
+      ctx.fillStyle = structure.type === "barracks" ? "#d9c7a7" : "#4f3526"; ctx.beginPath(); ctx.moveTo(sx - size * .62, sy - size * .35); ctx.lineTo(sx, sy - size * .75); ctx.lineTo(sx + size * .62, sy - size * .35); ctx.closePath(); ctx.fill();
+    }
+    if (m.size > 8 && integrity < .72) { ctx.fillStyle = "#2a1715"; ctx.fillRect(sx - size * .55, sy + size * .72, size * 1.1, 2); ctx.fillStyle = "#dc654f"; ctx.fillRect(sx - size * .55, sy + size * .72, size * 1.1 * integrity, 2); }
+    ctx.restore();
+  }
+}
+
 function render() {
   const m = viewMetrics(); ctx.clearRect(0, 0, m.width, m.height); ctx.fillStyle = "#0f2534"; ctx.fillRect(0, 0, m.width, m.height);
   const minX = clamp(Math.floor(-m.ox / m.size), 0, MAP_W), maxX = clamp(Math.ceil((m.width - m.ox) / m.size), 0, MAP_W);
@@ -1167,6 +1370,7 @@ function render() {
     if (isLand(t) && (t.biomass || 0) < .18) { ctx.fillStyle = "#6d593724"; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
     if (m.size > 7 && t.type === "forest" && (x * 7 + y * 11) % 4 === 0 && t.biomass > .25) { ctx.fillStyle = "#234825"; ctx.fillRect(sx + m.size * .35, sy + m.size * .15, Math.max(1,m.size*.35), Math.max(1,m.size*.55 * t.biomass)); }
   }
+  renderStructures(m);
   renderDisasters(m);
   for (const animal of animals) {
     const sx = m.ox + (animal.x + .5) * m.size, sy = m.oy + (animal.y + .5) * m.size;
@@ -1178,17 +1382,11 @@ function render() {
     else { ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); }
   }
   for (const v of villages) {
-    const sx = m.ox + (v.x + .5) * m.size, sy = m.oy + (v.y + .5) * m.size, k = getKingdom(v.kingdom), b = v.buildings;
+    const sx = m.ox + (v.x + .5) * m.size, sy = m.oy + (v.y + .5) * m.size, k = getKingdom(v.kingdom);
     if (sx < -30 || sy < -30 || sx > m.width + 30 || sy > m.height + 30) continue;
-    const dots = Math.min(7, (b.house || 0) + (b.farm || 0) + (b.barracks || 0));
-    for (let n = 0; n < dots; n++) {
-      const angle = n / Math.max(1, dots) * Math.PI * 2, bx = sx + Math.cos(angle) * m.size * 1.35, by = sy + Math.sin(angle) * m.size * 1.05;
-      ctx.fillStyle = n < (b.farm || 0) ? "#d2b65f" : n >= dots - (b.barracks || 0) ? "#6e3029" : "#6b4930";
-      ctx.fillRect(bx - m.size * .28, by - m.size * .25, m.size * .56, m.size * .5);
-    }
     ctx.fillStyle = "#3b2518"; ctx.fillRect(sx - m.size * .8, sy - m.size * .65, m.size * 1.6, m.size * 1.3);
     ctx.fillStyle = k?.color || "#ddd"; ctx.fillRect(sx - m.size * .9, sy - m.size * .9, m.size * 1.8, m.size * .35);
-    const maxHp = 160 + v.level * 50;
+    const maxHp = villageMaxHp(v);
     if (v.hp < maxHp * .9) { ctx.fillStyle = "#351a17"; ctx.fillRect(sx - m.size, sy + m.size, m.size * 2, Math.max(2, m.size * .2)); ctx.fillStyle = "#d65a43"; ctx.fillRect(sx - m.size, sy + m.size, m.size * 2 * clamp(v.hp / maxHp, 0, 1), Math.max(2, m.size * .2)); }
     if (m.size > 5) { ctx.fillStyle = "#fff0c9"; ctx.font = `${Math.max(9, m.size * 1.25)}px Microsoft YaHei`; ctx.textAlign = "center"; ctx.fillText(v.name, sx, sy - m.size * 1.3); }
   }
@@ -1257,15 +1455,20 @@ function updateUI() {
   const speciesCounts = animalCounts();
   document.getElementById("ecologyList").innerHTML = Object.entries(animalDefs).map(([species, def]) => `<div class="species-item"><span>${def.icon} ${def.name}</span><b>${speciesCounts[species]}</b></div>`).join("");
   const jobs = professionCounts(people), worldHappiness = averageHappiness(people), famineCount = activeKingdoms.filter(kingdom => kingdom.famine).length;
-  document.getElementById("societyList").innerHTML = people.length ? `<div class="society-summary"><span>平均幸福<b>${Math.round(worldHappiness)}</b></span><span>饥荒王国<b>${famineCount}</b></span></div><div class="profession-list">${workforceHtml(jobs)}</div>` : `<p class="muted">尚无社会分工</p>`;
+  const worldBuildings = emptyBuildingCounts();
+  for (const village of villages) for (const structure of village.structures || []) if (worldBuildings[structure.type] !== undefined) worldBuildings[structure.type]++;
+  const structureCount = Object.values(worldBuildings).reduce((sum, count) => sum + count, 0);
+  const infrastructure = Object.entries(buildingDefs).filter(([type]) => type !== "hall" && worldBuildings[type] > 0).map(([type, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${worldBuildings[type]}</span>`).join("");
+  document.getElementById("societyList").innerHTML = people.length ? `<div class="society-summary"><span>平均幸福<b>${Math.round(worldHappiness)}</b></span><span>饥荒王国<b>${famineCount}</b></span><span>实体建筑<b>${structureCount}</b></span></div><div class="profession-list">${workforceHtml(jobs)}</div><div class="building-grid infrastructure-grid">${infrastructure}</div>` : `<p class="muted">尚无社会分工</p>`;
   document.getElementById("disasterList").innerHTML = activeDisasters.length ? activeDisasters.map(disaster => {
     const def = disasterDefs[disaster.type], progress = clamp(disaster.duration / Math.max(1, disaster.maxDuration) * 100, 0, 100);
     return `<div class="disaster-item ${disaster.type}"><div><b>${def.icon} ${def.name}</b><span>${disasterLocation(disaster)} · 约 ${(disaster.duration * .02).toFixed(1)} 纪元</span></div><i style="width:${progress}%"></i></div>`;
   }).join("") : `<p class="muted disaster-calm">${randomDisastersEnabled ? `世界暂时平静 · 风险预计在纪元 ${Math.ceil(nextDisasterYear)}` : "随机天灾已关闭"}</p>`;
   document.getElementById("kingdomList").innerHTML = activeKingdoms.length ? activeKingdoms.map(k => {
     const citizens = peopleOfKingdom(k.id), pop = citizens.length, towns = villagesOfKingdom(k.id).length, race = raceDefs[k.race] || raceDefs.human;
+    const structures = villagesOfKingdom(k.id).reduce((sum, village) => sum + (village.structures?.length || 0), 0);
     let soldiers = 0; for (const citizen of citizens) if (citizen.role === "soldier") soldiers++;
-    return `<button class="kingdom-item" data-kingdom="${k.id}" style="border-color:${k.color}"><b>${race.icon} ${k.name}${kingdomAtWar(k.id) ? '<i class="war-badge">交战</i>' : ""}${k.famine ? '<i class="famine-badge">饥荒</i>' : ""}</b><span>${race.name} · ${pop} 人 · ⚔ ${soldiers} · ${towns} 个聚落 · 🙂 ${Math.round(averageHappiness(citizens))}</span><span class="resource-line"><i>🌾 ${Math.floor(k.resources.food)}</i><i>🪵 ${Math.floor(k.resources.wood)}</i><i>🪨 ${Math.floor(k.resources.stone)}</i></span></button>`;
+    return `<button class="kingdom-item" data-kingdom="${k.id}" style="border-color:${k.color}"><b>${race.icon} ${k.name}${kingdomAtWar(k.id) ? '<i class="war-badge">交战</i>' : ""}${k.famine ? '<i class="famine-badge">饥荒</i>' : ""}</b><span>${race.name} · ${pop} 人 · ⚔ ${soldiers} · ${towns} 聚落 · 🏗 ${structures} · 🙂 ${Math.round(averageHappiness(citizens))}</span><span class="resource-line"><i>🌾 ${Math.floor(k.resources.food)}</i><i>🪵 ${Math.floor(k.resources.wood)}</i><i>🪨 ${Math.floor(k.resources.stone)}</i></span></button>`;
   }).join("") : `<p class="muted">世界尚无文明</p>`;
   const relationOrder = { war: 0, alliance: 1, peace: 2 };
   const sortedRelations = relationPairs.sort((a, b) => relationOrder[a.status] - relationOrder[b.status]);
@@ -1287,10 +1490,10 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 5, savedAt: new Date().toISOString(),
+    version: 6, savedAt: new Date().toISOString(),
     meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount },
     worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1]),
-    people, animals, villages, kingdoms, events, activeDisasters, nextPersonId, nextAnimalId, nextVillageId, nextDisasterId, nextDisasterYear,
+    people, animals, villages, kingdoms, events, activeDisasters, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextDisasterId, nextDisasterYear,
     settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency }
   };
 }
@@ -1315,6 +1518,8 @@ function scheduleAutoSave() {
 }
 
 function normalizeWorldData(sourceVersion = 1) {
+  nextStructureId = Math.max(1, Number(nextStructureId) || 1);
+  const usedStructureIds = new Set();
   for (const tile of tiles) { tile.biomass ??= tile.type === "forest" ? .8 : tile.type === "grass" ? .6 : tile.type === "sand" ? .1 : 0; }
   for (const kingdom of kingdoms) kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4];
   for (const person of people) {
@@ -1336,7 +1541,19 @@ function normalizeWorldData(sourceVersion = 1) {
   }
   for (const village of villages) {
     village.hp ??= 160; village.buildCooldown ??= randi(6, 12);
-    village.buildings = { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, ...(village.buildings || {}) };
+    const legacyCounts = { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, road: 0, wall: 0, market: 0, dock: 0, temple: 0, ...(village.buildings || {}) };
+    if (sourceVersion < 6 || !Array.isArray(village.structures) || !village.structures.length) seedVillageStructures(village, legacyCounts);
+    else {
+      village.structures = village.structures.filter(structure => structure && buildingDefs[structure.type]).map(structure => {
+        const def = buildingDefs[structure.type], savedId = Number(structure.id);
+        let id = Number.isFinite(savedId) && savedId > 0 && !usedStructureIds.has(savedId) ? savedId : nextStructureId++;
+        usedStructureIds.add(id); nextStructureId = Math.max(nextStructureId, id + 1);
+        const maxHp = clamp(Number(structure.maxHp) || def.maxHp, Math.max(1, def.maxHp * .5), def.maxHp * 2);
+        return { ...structure, id, x: clamp(Math.round(Number(structure.x) || village.x), 0, MAP_W - 1), y: clamp(Math.round(Number(structure.y) || village.y), 0, MAP_H - 1), hp: clamp(Number(structure.hp) || maxHp, 1, maxHp), maxHp, builtYear: Math.max(1, Number(structure.builtYear) || Math.floor(year)) };
+      });
+      if (!village.structures.some(structure => structure.type === "hall")) addStructureEntity(village, "hall", { x: village.x, y: village.y });
+      syncBuildingCounts(village);
+    }
     village.workforce = professionCounts(people.filter(person => !person.dead && person.village === village.id)); village.averageHappiness = Number(village.averageHappiness) || 60;
   }
   for (const kingdom of kingdoms) {
@@ -1353,6 +1570,7 @@ function normalizeWorldData(sourceVersion = 1) {
   nextPersonId ||= Math.max(0, ...people.map(p => p.id)) + 1;
   nextAnimalId ||= Math.max(0, ...animals.map(a => a.id)) + 1;
   nextVillageId ||= Math.max(0, ...villages.map(v => v.id)) + 1;
+  nextStructureId = Math.max(nextStructureId, 1, ...villages.flatMap(village => village.structures || []).map(structure => structure.id + 1));
   nextDisasterId = Math.max(1, Number(nextDisasterId) || 1);
   activeDisasters = activeDisasters.filter(disaster => disaster && disasterDefs[disaster.type] && Number.isFinite(Number(disaster.x)) && Number.isFinite(Number(disaster.y))).slice(0, 12).map(disaster => {
     const def = disasterDefs[disaster.type], intensity = clamp(Number(disaster.intensity) || 2, 1, 6);
@@ -1378,7 +1596,7 @@ function restoreWorld(save, slot = activeSaveSlot) {
   if (save.tiles.length !== MAP_W * MAP_H || save.people.length > 5000 || (save.animals?.length || 0) > 5000) throw new Error("unsupported save size");
   tiles = save.tiles.map(t => Array.isArray(t) ? { type: t[0], fertility: t[1], biomass: t[2], fire: t[3], owner: t[4] } : t);
   people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; indexesReady = false;
-  year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
+  year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextStructureId = save.nextStructureId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
   const settings = save.settings || {};
   camera = settings.camera || { x: 0, y: 0, zoom: 1 }; speed = settings.speed || 1; selectedTool = settings.selectedTool || "inspect"; brushSize = settings.brushSize || 2;
   randomDisastersEnabled = settings.randomDisastersEnabled ?? randomDisastersEnabled; disasterFrequency = disasterIntervals[settings.disasterFrequency] ? settings.disasterFrequency : disasterFrequency;

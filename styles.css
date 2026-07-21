@@ -85,7 +85,7 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .species-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 7px; border: 1px solid #414732; border-radius: 3px; background: #171a13; color: #c8cab1; font-size: 10px; }
 .species-item b { color: var(--cream); }
 .society-list { display: grid; gap: 6px; }
-.society-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.society-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .society-summary span { padding: 6px; border: 1px solid #414732; border-radius: 3px; background: #171a13; color: var(--muted); text-align: center; font-size: 9px; }
 .society-summary b { display: block; margin-top: 2px; color: var(--cream); font-size: 12px; }
 .profession-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -110,6 +110,7 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .disaster-calm { margin: 0; padding: 7px; border: 1px dashed #464b37; border-radius: 4px; text-align: center; }
 .building-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
 .building-chip { padding: 5px; border: 1px solid #424733; border-radius: 3px; color: #c7c9af; background: #20241a; font-size: 10px; }
+.infrastructure-grid { margin-top: 6px; }
 .war-badge { display: inline-block; margin-left: 5px; padding: 1px 4px; border-radius: 3px; color: #ffd8cd; background: #8d3d31; font-size: 9px; }
 .event-log { font-size: 11px; color: #b7baa0; }
 .event { position: relative; margin: 0 0 9px 9px; padding-left: 12px; border-left: 1px solid #4f553d; line-height: 1.45; }
