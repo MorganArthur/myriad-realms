@@ -84,6 +84,15 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .relation-action:hover { border-color: #a28b50; color: #f1dfaa; }
 .relation-item.war .relation-action { border-color: #65443b; color: #eab1a4; }
 .relation-score { color: #868b73; }
+.climate-list { display: grid; gap: 6px; }
+.climate-title { display: flex; align-items: center; justify-content: space-between; padding: 7px; border: 1px solid #4e573c; border-radius: 4px; background: #192018; }
+.climate-title b { color: #d8d2ad; font-size: 10px; }
+.climate-title span { color: var(--muted); font-size: 8px; }
+.climate-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.climate-metrics span { padding: 5px 2px; border: 1px solid #414732; border-radius: 3px; background: #171a13; color: var(--muted); text-align: center; font-size: 8px; }
+.climate-metrics b { display: block; margin-top: 2px; color: var(--cream); font-size: 10px; }
+.season-track { overflow: hidden; height: 3px; border-radius: 3px; background: #353a2a; }
+.season-track i { display: block; height: 100%; background: linear-gradient(90deg, #7fbb68, #d6b454, #cb7946, #9fc3d8); }
 .ecology-list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .species-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 7px; border: 1px solid #414732; border-radius: 3px; background: #171a13; color: #c8cab1; font-size: 10px; }
 .species-item b { color: var(--cream); }

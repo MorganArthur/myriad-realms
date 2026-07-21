@@ -21,6 +21,7 @@
         <span>生物 <b id="animalStat">0</b></span>
         <span>战争 <b id="warStat">0</b></span>
         <span>灾害 <b id="disasterStat">0</b></span>
+        <span>气候 <b id="climateStat">🌱 春</b></span>
       </div>
       <div class="time-controls">
         <button id="pauseBtn" class="icon-btn active" title="暂停/继续">▶</button>
@@ -45,6 +46,8 @@
           <button class="tool" data-tool="orc"><span>👹</span>创造兽人</button>
           <button class="tool" data-tool="rabbit"><span>🐇</span>放生野兔</button>
           <button class="tool" data-tool="deer"><span>🦌</span>放生鹿群</button>
+          <button class="tool" data-tool="boar"><span>🐗</span>放生野猪</button>
+          <button class="tool" data-tool="fox"><span>🦊</span>放生赤狐</button>
           <button class="tool" data-tool="wolf"><span>🐺</span>放生狼群</button>
           <button class="tool" data-tool="bear"><span>🐻</span>放生棕熊</button>
           <button class="tool" data-tool="bless"><span>✨</span>生命祝福</button>
@@ -88,6 +91,8 @@
           <div class="selection-icon">◌</div>
           <p>点击地图中的居民、聚落或土地查看详情</p>
         </div>
+        <h3>气候环境</h3>
+        <div id="climateList" class="climate-list"><p class="muted">气候正在形成</p></div>
         <h3>生态概览</h3>
         <div id="ecologyList" class="ecology-list"></div>
         <h3>社会概览</h3>

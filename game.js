@@ -18,10 +18,12 @@ const raceDefs = {
 const animalDefs = {
   rabbit: { name: "野兔", icon: "🐇", diet: "herbivore", maxAge: 11, health: 32, hungerRate: .08, vision: 5, reproduce: .003, adult: 1, color: "#e8dfc8", size: .21, habitats: ["grass", "forest", "sand"] },
   deer: { name: "野鹿", icon: "🦌", diet: "herbivore", maxAge: 24, health: 72, hungerRate: .1, vision: 7, reproduce: .0012, adult: 3, color: "#bd8150", size: .34, habitats: ["forest", "grass"] },
-  wolf: { name: "灰狼", icon: "🐺", diet: "predator", prey: ["rabbit", "deer"], maxAge: 22, health: 88, hungerRate: .08, vision: 13, damage: 34, reproduce: .00055, adult: 3, color: "#9a9d99", size: .32, habitats: ["forest", "grass", "mountain"] },
-  bear: { name: "棕熊", icon: "🐻", diet: "predator", prey: ["deer", "rabbit", "wolf"], maxAge: 28, health: 145, hungerRate: .12, vision: 8, damage: 31, reproduce: .00012, adult: 5, color: "#76513b", size: .44, habitats: ["forest", "mountain", "grass"] }
+  boar: { name: "野猪", icon: "🐗", diet: "herbivore", maxAge: 19, health: 96, hungerRate: .13, vision: 6, reproduce: .00085, adult: 2, color: "#72513f", size: .38, habitats: ["forest", "grass"] },
+  fox: { name: "赤狐", icon: "🦊", diet: "predator", prey: ["rabbit"], maxAge: 15, health: 54, hungerRate: .075, vision: 10, damage: 24, reproduce: .0007, adult: 2, color: "#d97d3e", size: .27, habitats: ["forest", "grass", "sand"] },
+  wolf: { name: "灰狼", icon: "🐺", diet: "predator", prey: ["rabbit", "deer", "boar", "fox"], maxAge: 22, health: 88, hungerRate: .08, vision: 13, damage: 34, reproduce: .00055, adult: 3, color: "#9a9d99", size: .32, habitats: ["forest", "grass", "mountain"] },
+  bear: { name: "棕熊", icon: "🐻", diet: "predator", prey: ["deer", "boar", "rabbit", "wolf"], maxAge: 28, health: 145, hungerRate: .12, vision: 8, damage: 31, reproduce: .00012, adult: 5, color: "#76513b", size: .44, habitats: ["forest", "mountain", "grass"] }
 };
-const animalCaps = { rabbit: 220, deer: 120, wolf: 50, bear: 24 };
+const animalCaps = { rabbit: 220, deer: 120, boar: 70, fox: 45, wolf: 50, bear: 24 };
 const buildingDefs = {
   hall: { name: "议事厅", icon: "▣", wood: 0, stone: 0, maxHp: 240, color: "#74513a", effect: "聚落的行政与防御核心" },
   house: { name: "住宅", icon: "⌂", wood: 24, stone: 5, maxHp: 100, color: "#8b6544", effect: "提供 7 人居住容量" },
@@ -80,6 +82,19 @@ const socialClassDefs = {
   elite: { name: "权贵", icon: "♛" }, merchant: { name: "商贾", icon: "⚖" }, artisan: { name: "匠师", icon: "◆" },
   peasant: { name: "平民", icon: "●" }, warrior: { name: "军户", icon: "⚔" }, dependent: { name: "眷属", icon: "◌" }
 };
+const seasonDefs = {
+  spring: { name: "春", icon: "🌱", temperature: 16, rainfall: .72, growth: 1.35, crops: 1.18, reproduction: 1.3, tint: "#8fcf6a12" },
+  summer: { name: "夏", icon: "☀", temperature: 27, rainfall: .48, growth: 1, crops: 1.04, reproduction: 1, tint: "#e5c05a0b" },
+  autumn: { name: "秋", icon: "🍂", temperature: 18, rainfall: .55, growth: .72, crops: 1.1, reproduction: .72, tint: "#d8823820" },
+  winter: { name: "冬", icon: "❄", temperature: 3, rainfall: .34, growth: .22, crops: .62, reproduction: .38, tint: "#b9d7ea24" }
+};
+const weatherDefs = {
+  clear: { name: "晴朗", icon: "◌", temperature: 0, rainfall: 0, growth: 1, crops: 1 },
+  rain: { name: "降雨", icon: "🌧", temperature: -2, rainfall: .35, growth: 1.22, crops: 1.12 },
+  storm: { name: "风暴", icon: "⛈", temperature: -4, rainfall: .5, growth: 1.08, crops: .82 },
+  heatwave: { name: "热浪", icon: "♨", temperature: 8, rainfall: -.28, growth: .55, crops: .68 },
+  frost: { name: "霜冻", icon: "🌨", temperature: -8, rainfall: .08, growth: .35, crops: .56 }
+};
 const statusLabels = { peace: "和平", alliance: "同盟", war: "战争" };
 const disasterDefs = {
   earthquake: { name: "地震", icon: "🌎", color: "#d7c0a1", radius: 4, duration: 70 },
@@ -93,6 +108,7 @@ const disasterIntervals = { rare: [15, 24], normal: [8, 14], frequent: [4, 8] };
 
 let tiles = [], people = [], animals = [], villages = [], kingdoms = [], events = [], activeDisasters = [], tradeRoutes = [], caravans = [], armies = [];
 let year = 1, ticks = 0, running = false, speed = 1, selectedTool = "inspect", brushSize = 2;
+let climate = { season: "spring", weather: "clear", temperature: 16, rainfall: .72, seasonProgress: 0, weatherUntil: 1.8, nextWeatherYear: 1.8 };
 let camera = { x: 0, y: 0, zoom: 1 }, dragging = false, lastMouse = null, painting = false;
 let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextStructureId = 1, nextTradeRouteId = 1, nextCaravanId = 1, nextArmyId = 1, nextDisasterId = 1, selectedKingdomId = null, selectedTradeRouteId = null, selectedArmyId = null, activeSaveSlot = 1;
 let autoSaveEnabled = true, lastAutoSaveYear = 0, autoSavePending = false, indexesReady = false, renderDirty = true;
@@ -175,6 +191,32 @@ function habitableTileIndices() {
 function scheduleNextDisaster() {
   const range = disasterIntervals[disasterFrequency] || disasterIntervals.normal;
   nextDisasterYear = year + rand(range[0], range[1]);
+}
+
+function seasonForYear(value = year) {
+  const seasons = Object.keys(seasonDefs), cycle = ((value - 1) % seasons.length + seasons.length) % seasons.length;
+  return seasons[Math.floor(cycle)];
+}
+
+function weatherPool(season) {
+  if (season === "spring") return ["clear", "rain", "rain", "storm"];
+  if (season === "summer") return ["clear", "clear", "rain", "heatwave"];
+  if (season === "autumn") return ["clear", "rain", "storm", "clear"];
+  return ["clear", "frost", "frost", "storm"];
+}
+
+function updateClimate() {
+  const season = seasonForYear(), previousSeason = climate.season;
+  climate.season = season; climate.seasonProgress = ((year - 1) % 1 + 1) % 1;
+  if (season !== previousSeason) addEvent(`${seasonDefs[season].icon} ${seasonDefs[season].name}季到来，世界气候开始转变。`);
+  if (!weatherDefs[climate.weather] || year >= (climate.nextWeatherYear || 0)) {
+    const pool = weatherPool(season), previousWeather = climate.weather;
+    climate.weather = pool[randi(0, pool.length - 1)]; climate.weatherUntil = year + rand(.55, 1.15); climate.nextWeatherYear = climate.weatherUntil;
+    if (climate.weather !== previousWeather && climate.weather !== "clear") addEvent(`${weatherDefs[climate.weather].icon} ${weatherDefs[climate.weather].name}席卷世界，生产与生态受到影响。`);
+  }
+  const seasonDef = seasonDefs[season], weather = weatherDefs[climate.weather] || weatherDefs.clear;
+  climate.temperature = seasonDef.temperature + weather.temperature + Math.sin(year * 2.7) * 1.4;
+  climate.rainfall = clamp(seasonDef.rainfall + weather.rainfall, 0, 1);
 }
 
 function findNearbyEntity(map, x, y, radius, predicate, nearest = false) {
@@ -274,9 +316,10 @@ function generateWorld() {
     const e = elevation[idx(x, y)] + Math.min(1, edge) * .22 - .13;
     let type = e < .45 ? "deep" : e < .49 ? "water" : e < .525 ? "sand" : e > .69 ? "mountain" : moisture[idx(x, y)] > .53 ? "forest" : "grass";
     const biomass = type === "forest" ? rand(.72, 1) : type === "grass" ? rand(.5, .88) : type === "sand" ? rand(.05, .16) : 0;
-    tiles.push({ type, fertility: type === "forest" ? 1 : type === "grass" ? .75 : .25, biomass, fire: 0, owner: -1 });
+    const latitudeTemperature = 29 - Math.abs(y / (MAP_H - 1) - .5) * 31;
+    tiles.push({ type, fertility: type === "forest" ? 1 : type === "grass" ? .75 : .25, biomass, moisture: clamp(moisture[idx(x, y)], .08, .95), temperature: latitudeTemperature - (type === "mountain" ? 8 : 0) + rand(-1.5, 1.5), fire: 0, owner: -1 });
   }
-  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; tradeRoutes = []; caravans = []; armies = []; year = 1; ticks = 0; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextArmyId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; indexesReady = false; lastAutoSaveYear = 1;
+  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; tradeRoutes = []; caravans = []; armies = []; year = 1; ticks = 0; climate = { season: "spring", weather: "clear", temperature: 16, rainfall: .72, seasonProgress: 0, weatherUntil: 1.8, nextWeatherYear: 1.8 }; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextArmyId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; indexesReady = false; lastAutoSaveYear = 1;
   camera = { x: 0, y: 0, zoom: 1 };
   const valid = habitableTileIndices();
   const anchors = [];
@@ -333,7 +376,7 @@ function spawnAnimal(x, y, species, age = null) {
 }
 
 function populateWildlife(validTiles) {
-  const counts = { rabbit: 120, deer: 60, wolf: 14, bear: 4 };
+  const counts = { rabbit: 120, deer: 60, boar: 28, fox: 10, wolf: 14, bear: 4 };
   for (const [species, count] of Object.entries(counts)) for (let n = 0; n < count; n++) {
     for (let attempt = 0; attempt < 40; attempt++) {
       const i = validTiles[randi(0, validTiles.length - 1)], x = i % MAP_W, y = Math.floor(i / MAP_W);
@@ -917,6 +960,7 @@ function simulateCaravans() {
 }
 
 function produceResources() {
+  const season = seasonDefs[climate.season] || seasonDefs.spring, weather = weatherDefs[climate.weather] || weatherDefs.clear, climateFoodMultiplier = season.crops * weather.crops;
   for (const kingdom of kingdoms) {
     const realmVillages = villagesOfKingdom(kingdom.id);
     const realmPeople = peopleOfKingdom(kingdom.id);
@@ -926,7 +970,7 @@ function produceResources() {
       const residents = peopleOfVillage(village.id), jobs = professionCounts(residents), terrain = ownedTerrainCounts(kingdom.id, village), b = village.buildings;
       const farmerOutput = jobs.farmer * (.55 + b.farm * .22), lumberOutput = jobs.lumberjack * (.48 + b.lumber * .24), minerOutput = jobs.miner * (.4 + b.quarry * .28);
       const dockOutput = b.dock * (.45 + residents.length * .018);
-      const localFood = (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + dockOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food;
+      const localFood = (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + dockOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food * climateFoodMultiplier;
       const localWood = (terrain.forest * .018 + lumberOutput + jobs.laborer * .018) * race.wood;
       const localStone = (terrain.mountain * .014 + minerOutput) * race.stone;
       food += localFood; wood += localWood; stone += localStone;
@@ -992,7 +1036,7 @@ function attemptConstruction(village, population) {
 }
 
 function simulationStep() {
-  ticks++; year += .02; rebuildWorldIndexes();
+  ticks++; year += .02; updateClimate(); rebuildWorldIndexes();
   if (ticks % 25 === 0) triggerRandomDisaster();
   simulateDisasters();
   simulateCaravans();
@@ -1014,7 +1058,8 @@ function simulationStep() {
     const tile = tileAt(person.x, person.y);
     const forage = !person.village && tile ? Math.min(tile.biomass || 0, .012) : 0;
     if (tile) tile.biomass = Math.max(0, (tile.biomass || 0) - forage);
-    person.food = clamp(person.food + (tile?.fertility || 0) * .2 + forage * 800 - .19, 0, 110);
+    const climateCost = climate.season === "winter" ? .045 : climate.weather === "heatwave" ? .035 : 0;
+    person.food = clamp(person.food + (tile?.fertility || 0) * .2 + forage * 800 - .19 - climateCost, 0, 110);
     if (person.food <= 0) person.health -= .7;
     if (tile?.fire > 0) person.health -= 4;
     if (person.blessed) person.health = Math.min(140, person.health + .08);
@@ -1052,7 +1097,8 @@ function simulationStep() {
     if (person.age >= 16 && person.profession === "child") person.profession = "laborer";
     updatePersonWellbeing(person, home, realm);
     const happinessBirthRate = clamp((person.happiness - 35) / 45, .2, 1.15);
-    if (home && person.role === "civilian" && person.age > 17 && person.food > 76 && person.happiness > 45 && !realm?.famine && realm?.resources.food > 10 && homePop < villageCapacity(home) && people.length < 800 && Math.random() < .0028 * race.birth * happinessBirthRate) {
+    const seasonalBirthRate = seasonDefs[climate.season]?.reproduction || 1;
+    if (home && person.role === "civilian" && person.age > 17 && person.food > 76 && person.happiness > 45 && !realm?.famine && realm?.resources.food > 10 && homePop < villageCapacity(home) && people.length < 800 && Math.random() < .0028 * race.birth * happinessBirthRate * seasonalBirthRate) {
       spawnPerson(person.x, person.y, person.kingdom, person.race);
       const baby = people[people.length - 1]; baby.age = 0; baby.village = person.village; baby.food = 60; baby.profession = "child"; baby.happiness = 68; baby.needs = { nutrition: 60, shelter: 78, safety: 72, health: 100 };
       person.food -= 18; realm.resources.food = Math.max(0, realm.resources.food - 1.5);
@@ -1078,10 +1124,24 @@ function simulationStep() {
 
 function regenerateBiomass() {
   const capacities = { forest: 1, grass: .82, sand: .14, ash: .38, mountain: .08, water: 0, deep: 0 };
+  const season = seasonDefs[climate.season] || seasonDefs.spring, weather = weatherDefs[climate.weather] || weatherDefs.clear, growthMultiplier = season.growth * weather.growth;
   for (let i = ticks % 12; i < tiles.length; i += 12) {
-    const tile = tiles[i], cap = capacities[tile.type] || 0; tile.biomass ??= cap * .5;
-    if (!tile.fire && tile.biomass < cap) tile.biomass = Math.min(cap, tile.biomass + (tile.type === "grass" ? .012 : .008));
-    if (tile.type === "ash" && tile.biomass > .3 && Math.random() < .025) { tile.type = "grass"; tile.fertility = .55; }
+    const tile = tiles[i], x = i % MAP_W, y = Math.floor(i / MAP_W), baseCap = capacities[tile.type] || 0; tile.biomass ??= baseCap * .5; tile.moisture ??= tile.type === "forest" ? .7 : tile.type === "grass" ? .52 : .2;
+    const waterInfluence = adjacentWaterCount(x, y) ? .16 : 0, drought = activeDisasters.reduce((sum, disaster) => disaster.type === "drought" ? Math.max(sum, disasterFalloff(disaster, x, y)) : sum, 0);
+    const evaporation = Math.max(0, climate.temperature - 20) * .006 + (climate.weather === "heatwave" ? .12 : 0), moistureTarget = clamp(climate.rainfall * .72 + waterInfluence - evaporation - drought * .55, .02, 1);
+    tile.moisture += (moistureTarget - tile.moisture) * .035;
+    const latitude = 10 - Math.abs(y / (MAP_H - 1) - .5) * 28, temperatureTarget = climate.temperature + latitude - (tile.type === "mountain" ? 8 : 0);
+    tile.temperature = (Number(tile.temperature) || temperatureTarget) + (temperatureTarget - (Number(tile.temperature) || temperatureTarget)) * .06;
+    const moistureHealth = clamp(.22 + tile.moisture * 1.2, .12, 1.15), temperatureHealth = tile.temperature < -5 ? .25 : tile.temperature > 38 ? .35 : tile.temperature < 3 ? .58 : 1;
+    const cap = baseCap * moistureHealth * temperatureHealth;
+    if (!tile.fire && tile.biomass < cap) tile.biomass = Math.min(cap, tile.biomass + (tile.type === "grass" ? .012 : .008) * growthMultiplier * moistureHealth);
+    else if (tile.biomass > cap) tile.biomass = Math.max(cap, tile.biomass - .004 * (1 + Math.max(0, 20 - tile.temperature) * .02));
+    if (tile.type === "ash" && tile.biomass > .28 && tile.moisture > .35 && Math.random() < .03 * growthMultiplier) { tile.type = "grass"; tile.fertility = Math.max(.48, tile.fertility); }
+    if (tile.type === "grass" && tile.biomass > .72 && tile.moisture > .64 && tile.fertility > .65 && Math.random() < .006 * growthMultiplier) { tile.type = "forest"; tile.fertility = Math.min(1, tile.fertility + .05); }
+    if (tile.type === "forest" && tile.moisture < .12 && tile.biomass < .18 && Math.random() < .018) { tile.type = "grass"; tile.fertility = Math.max(.25, tile.fertility - .08); }
+    if (tile.type === "grass" && tile.moisture < .08 && tile.biomass < .09 && Math.random() < .012) { tile.type = "sand"; tile.fertility = Math.max(.08, tile.fertility - .12); }
+    if (tile.type === "sand" && tile.moisture > .68 && tile.biomass > .1 && tile.fertility > .32 && Math.random() < .01 * growthMultiplier) tile.type = "grass";
+    if (!tile.fire && climate.weather === "heatwave" && tile.type === "forest" && tile.moisture < .14 && Math.random() < .0007) tile.fire = randi(45, 90);
   }
 }
 
@@ -1100,19 +1160,23 @@ function moveAnimal(animal, target = null, flee = false) {
 
 function simulateAnimals(timeFactor = 1) {
   const speciesCounts = animalCounts();
+  const season = seasonDefs[climate.season] || seasonDefs.spring, weather = weatherDefs[climate.weather] || weatherDefs.clear;
   const animalsAtStepStart = animals.length;
   for (let animalIndex = 0; animalIndex < animalsAtStepStart; animalIndex++) {
     const animal = animals[animalIndex];
     if (animal.dead) continue;
     const def = animalDefs[animal.species], tile = tileAt(animal.x, animal.y);
-    animal.age += .006 * timeFactor; animal.hunger = Math.max(0, animal.hunger - def.hungerRate * timeFactor); animal.cooldown -= timeFactor; animal.attackCooldown = Math.max(0, animal.attackCooldown - timeFactor);
+    const climateHunger = climate.weather === "heatwave" || climate.season === "winter" ? 1.3 : 1;
+    animal.age += .006 * timeFactor; animal.hunger = Math.max(0, animal.hunger - def.hungerRate * timeFactor * climateHunger); animal.cooldown -= timeFactor; animal.attackCooldown = Math.max(0, animal.attackCooldown - timeFactor);
     if (tile?.fire) animal.health -= 7;
+    if ((tile?.temperature ?? climate.temperature) < -8 && !["forest", "mountain"].includes(tile?.type)) animal.health -= .018 * timeFactor;
+    if ((tile?.temperature ?? climate.temperature) > 39 && animal.hunger < 45) animal.health -= .02 * timeFactor;
     if (animal.hunger <= 0) animal.health -= 1.2;
     if (animal.health <= 0 || animal.age > def.maxAge + rand(-2, 3)) { animal.dead = true; continue; }
 
     if (def.diet === "herbivore") {
       if (tile && animal.hunger < 94 && tile.biomass > .01) {
-        const bite = Math.min(tile.biomass, animal.species === "rabbit" ? .018 : .038); tile.biomass -= bite; animal.hunger = Math.min(100, animal.hunger + bite * 900);
+        const bite = Math.min(tile.biomass, animal.species === "rabbit" ? .018 : animal.species === "boar" ? .05 : .038); tile.biomass -= bite; animal.hunger = Math.min(100, animal.hunger + bite * 900);
       }
       if (animal.cooldown <= 0) {
         const threat = findNearbyEntity(worldIndex.animalSpatial, animal.x, animal.y, def.vision, other => animalDefs[other.species]?.prey?.includes(animal.species));
@@ -1136,7 +1200,7 @@ function simulateAnimals(timeFactor = 1) {
 
     const mateRadius = def.diet === "predator" ? 12 : 4, matingHunger = def.diet === "predator" ? 52 : 72;
     const mate = animal.age >= def.adult && animal.hunger > matingHunger && findNearbyEntity(worldIndex.animalSpatial, animal.x, animal.y, mateRadius, other => other.id !== animal.id && other.species === animal.species && other.age >= def.adult);
-    if (mate && speciesCounts[animal.species] < animalCaps[animal.species] && animals.length < 450 && Math.random() < def.reproduce * timeFactor) {
+    if (mate && speciesCounts[animal.species] < animalCaps[animal.species] && animals.length < 520 && Math.random() < def.reproduce * timeFactor * season.reproduction * Math.min(1.15, weather.growth)) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const x = animal.x + randi(-1, 1), y = animal.y + randi(-1, 1), baby = spawnAnimal(x, y, animal.species, 0);
         if (baby) { baby.hunger = 60; speciesCounts[animal.species]++; animal.hunger -= 18; break; }
@@ -1146,7 +1210,7 @@ function simulateAnimals(timeFactor = 1) {
 }
 
 function maintainBiodiversity() {
-  const minimums = { rabbit: 28, deer: 16, wolf: 5, bear: 2 };
+  const minimums = { rabbit: 28, deer: 16, boar: 8, fox: 4, wolf: 5, bear: 2 };
   const counts = animalCounts(true);
   for (const [species, minimum] of Object.entries(minimums)) {
     if (counts[species] >= minimum) continue;
@@ -1335,7 +1399,7 @@ function triggerRandomDisaster() {
 function simulateFlood(disaster) {
   if (disaster.age % 3) return;
   forEachDisasterTile(disaster, tile => {
-    if (!isLand(tile)) return; tile.biomass = Math.max(0, (tile.biomass || 0) - .006 * disaster.intensity); tile.fertility = Math.max(.08, tile.fertility - .0007 * disaster.intensity);
+    if (!isLand(tile)) return; tile.moisture = Math.min(1, (tile.moisture || .4) + .012 * disaster.intensity); tile.biomass = Math.max(0, (tile.biomass || 0) - .006 * disaster.intensity); tile.fertility = Math.max(.08, tile.fertility - .0007 * disaster.intensity);
   });
   for (const person of people) {
     const force = disasterFalloff(disaster, person.x, person.y); if (!force) continue;
@@ -1386,6 +1450,7 @@ function simulateDrought(disaster) {
   if (disaster.age % 3) return;
   forEachDisasterTile(disaster, (tile, x, y, force) => {
     if (!isLand(tile)) return;
+    tile.moisture = Math.max(.01, (tile.moisture || .4) - .009 * disaster.intensity * force);
     tile.biomass = Math.max(0, (tile.biomass || 0) - .004 * disaster.intensity * force);
     tile.fertility = Math.max(.06, tile.fertility - .00025 * disaster.intensity * force);
     if (!tile.fire && tile.type === "forest" && tile.biomass < .15 && Math.random() < .0007 * disaster.intensity) tile.fire = randi(50, 110);
@@ -1734,9 +1799,9 @@ function applyTool(gx, gy) {
   for (let y = gy - radius; y <= gy + radius; y++) for (let x = gx - radius; x <= gx + radius; x++) {
     if (Math.hypot(x - gx, y - gy) > radius + .3) continue;
     const t = tileAt(x, y); if (!t) continue;
-    if (selectedTool === "land") { t.type = Math.random() < .28 ? "forest" : "grass"; t.fertility = .8; t.biomass = .65; }
-    if (selectedTool === "water") { t.type = "water"; t.fertility = 0; t.biomass = 0; t.owner = -1; }
-    if (selectedTool === "forest" && isLand(t)) { t.type = "forest"; t.fertility = 1; t.biomass = 1; }
+    if (selectedTool === "land") { t.type = Math.random() < .28 ? "forest" : "grass"; t.fertility = .8; t.biomass = .65; t.moisture = Math.max(.48, t.moisture || 0); }
+    if (selectedTool === "water") { t.type = "water"; t.fertility = 0; t.biomass = 0; t.moisture = 1; t.owner = -1; }
+    if (selectedTool === "forest" && isLand(t)) { t.type = "forest"; t.fertility = 1; t.biomass = 1; t.moisture = Math.max(.68, t.moisture || 0); }
     if (selectedTool === "fire" && ["grass", "forest", "sand"].includes(t.type)) t.fire = randi(80, 160);
     if (selectedTool === "bless") {
       people.filter(p => p.x === x && p.y === y).forEach(p => { p.blessed = true; p.health = 140; p.food = 110; });
@@ -1748,7 +1813,7 @@ function applyTool(gx, gy) {
 function meteor(gx, gy) {
   for (let y = gy - brushSize * 2; y <= gy + brushSize * 2; y++) for (let x = gx - brushSize * 2; x <= gx + brushSize * 2; x++) {
     const d = Math.hypot(x - gx, y - gy), t = tileAt(x, y); if (!t || d > brushSize * 2) continue;
-    t.type = d < brushSize * .7 ? "water" : "ash"; t.fertility = 0; t.biomass = 0; t.fire = d > brushSize * .7 ? randi(50, 130) : 0; t.owner = -1;
+    t.type = d < brushSize * .7 ? "water" : "ash"; t.fertility = 0; t.biomass = 0; t.moisture = d < brushSize * .7 ? 1 : .05; t.fire = d > brushSize * .7 ? randi(50, 130) : 0; t.owner = -1;
   }
   people = people.filter(p => Math.hypot(p.x - gx, p.y - gy) > brushSize * 2.2);
   animals = animals.filter(a => Math.hypot(a.x - gx, a.y - gy) > brushSize * 2.2);
@@ -1814,7 +1879,7 @@ function inspectAt(x, y) {
     box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>平均幸福 / 动乱</span><b>${Math.round(village.averageHappiness || 0)} / ${Math.round(village.unrest || 0)}</b></div><div class="detail-row"><span>防御 / 规模</span><b>${Math.round(village.hp)} / ${villageMaxHp(village)} · ${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="detail-row"><span>贸易路线</span><b>${routes.length} 条</b></div><div class="inventory-list">${inventoryHtml(village)}</div><div class="building-grid">${Object.entries(buildingDefs).filter(([key]) => (b[key] || 0) > 0).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div><h3>劳动力</h3><div class="profession-list">${workforceHtml(village.workforce || {})}</div>`;
   } else {
     const t = tileAt(x, y), labels = { deep:"深海",water:"浅海",sand:"沙滩",grass:"草原",forest:"森林",mountain:"山地",ash:"焦土" };
-    box.innerHTML = `<h4>▦ ${labels[t?.type] || "世界之外"}</h4><div class="detail-row"><span>坐标</span><b>${x}, ${y}</b></div><div class="detail-row"><span>肥沃度</span><b>${Math.round((t?.fertility || 0) * 100)}%</b></div><div class="detail-row"><span>植被量</span><b>${Math.round((t?.biomass || 0) * 100)}%</b></div>`;
+    box.innerHTML = `<h4>▦ ${labels[t?.type] || "世界之外"}</h4><div class="detail-row"><span>坐标</span><b>${x}, ${y}</b></div><div class="detail-row"><span>温度 / 湿度</span><b>${Number(t?.temperature || 0).toFixed(1)}℃ · ${Math.round((t?.moisture || 0) * 100)}%</b></div><div class="detail-row"><span>肥沃度</span><b>${Math.round((t?.fertility || 0) * 100)}%</b></div><div class="detail-row"><span>植被量</span><b>${Math.round((t?.biomass || 0) * 100)}%</b></div>`;
   }
 }
 
@@ -1961,11 +2026,13 @@ function renderStructures(m) {
 
 function render() {
   const m = viewMetrics(); ctx.clearRect(0, 0, m.width, m.height); ctx.fillStyle = "#0f2534"; ctx.fillRect(0, 0, m.width, m.height);
+  const seasonalTint = seasonDefs[climate.season]?.tint || null;
   const minX = clamp(Math.floor(-m.ox / m.size), 0, MAP_W), maxX = clamp(Math.ceil((m.width - m.ox) / m.size), 0, MAP_W);
   const minY = clamp(Math.floor(-m.oy / m.size), 0, MAP_H), maxY = clamp(Math.ceil((m.height - m.oy) / m.size), 0, MAP_H);
   for (let y = minY; y < maxY; y++) for (let x = minX; x < maxX; x++) {
     const t = tileAt(x, y), sx = Math.floor(m.ox + x * m.size), sy = Math.floor(m.oy + y * m.size);
     ctx.fillStyle = t.fire ? terrainColors.fire : terrainColors[t.type]; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5));
+    if (seasonalTint && isLand(t) && !t.fire) { ctx.fillStyle = seasonalTint; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5)); }
     if (t.owner >= 0 && isLand(t)) { ctx.fillStyle = `${kingdoms[t.owner]?.color || "#fff"}35`; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
     if (t.owner >= 0 && m.size > 4) {
       ctx.strokeStyle = `${getKingdom(t.owner)?.color || "#fff"}a8`; ctx.lineWidth = 1;
@@ -1984,6 +2051,8 @@ function render() {
     const def = animalDefs[animal.species], r = clamp(m.size * def.size, 1.2, 4.3); ctx.fillStyle = def.color;
     if (animal.species === "rabbit") { ctx.fillRect(sx - r, sy - r * .6, r * 2, r * 1.2); if (m.size > 6) { ctx.fillRect(sx - r * .55, sy - r * 1.5, r * .35, r); ctx.fillRect(sx + r * .2, sy - r * 1.5, r * .35, r); } }
     else if (animal.species === "deer") { ctx.fillRect(sx - r, sy - r * .65, r * 2, r * 1.3); ctx.fillStyle = "#e8cf9e"; ctx.fillRect(sx + r * .55, sy - r, r * .35, r * .45); }
+    else if (animal.species === "boar") { ctx.fillRect(sx - r, sy - r * .65, r * 1.8, r * 1.3); ctx.fillRect(sx + r * .55, sy - r * .38, r * .75, r * .7); }
+    else if (animal.species === "fox") { ctx.beginPath(); ctx.moveTo(sx, sy - r); ctx.lineTo(sx + r, sy + r * .7); ctx.lineTo(sx - r, sy + r * .7); ctx.fill(); ctx.fillRect(sx - r * 1.45, sy + r * .2, r * .7, r * .45); }
     else if (animal.species === "wolf") { ctx.beginPath(); ctx.moveTo(sx, sy - r); ctx.lineTo(sx + r, sy + r); ctx.lineTo(sx - r, sy + r); ctx.fill(); }
     else { ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); }
   }
@@ -2045,6 +2114,8 @@ function renderDisasters(m) {
 
 function updateUI() {
   document.getElementById("yearStat").textContent = Math.floor(year);
+  const season = seasonDefs[climate.season] || seasonDefs.spring, weather = weatherDefs[climate.weather] || weatherDefs.clear;
+  document.getElementById("climateStat").textContent = `${season.icon} ${season.name} · ${weather.icon}`;
   document.getElementById("populationStat").textContent = people.length;
   document.getElementById("animalStat").textContent = animals.length;
   document.getElementById("villageStat").textContent = villages.length;
@@ -2061,6 +2132,10 @@ function updateUI() {
   }
   document.getElementById("warStat").textContent = warCount;
   document.getElementById("eventLog").innerHTML = events.map(e => `<div class="event"><time>纪元 ${e.year}</time>${e.text}</div>`).join("");
+  let sampledMoisture = 0, sampledFertility = 0, climateSamples = 0;
+  for (let i = 0; i < tiles.length; i += 24) if (isLand(tiles[i])) { sampledMoisture += tiles[i].moisture || 0; sampledFertility += tiles[i].fertility || 0; climateSamples++; }
+  const averageMoisture = climateSamples ? sampledMoisture / climateSamples * 100 : 0, averageFertility = climateSamples ? sampledFertility / climateSamples * 100 : 0, cropYield = season.crops * weather.crops * 100;
+  document.getElementById("climateList").innerHTML = `<div class="climate-title"><b>${season.icon} ${season.name}季 · ${weather.icon} ${weather.name}</b><span>${climate.temperature.toFixed(1)}℃ · 降水 ${Math.round(climate.rainfall * 100)}%</span></div><div class="climate-metrics"><span>平均湿度<b>${Math.round(averageMoisture)}%</b></span><span>平均肥力<b>${Math.round(averageFertility)}%</b></span><span>作物产能<b>${Math.round(cropYield)}%</b></span></div><div class="season-track"><i style="width:${Math.round(climate.seasonProgress * 100)}%"></i></div>`;
   const speciesCounts = animalCounts();
   document.getElementById("ecologyList").innerHTML = Object.entries(animalDefs).map(([species, def]) => `<div class="species-item"><span>${def.icon} ${def.name}</span><b>${speciesCounts[species]}</b></div>`).join("");
   const jobs = professionCounts(people), worldClasses = socialClassCounts(people), worldHappiness = averageHappiness(people), famineCount = activeKingdoms.filter(kingdom => kingdom.famine).length;
@@ -2120,9 +2195,9 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 9, savedAt: new Date().toISOString(),
-    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length },
-    worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1]),
+    version: 10, savedAt: new Date().toISOString(),
+    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, season: climate.season, weather: climate.weather },
+    worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1, round3(t.moisture), round3(t.temperature)]), climate,
     people, animals, villages, kingdoms, events, activeDisasters, tradeRoutes, caravans, armies, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextDisasterId, nextDisasterYear,
     settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency }
   };
@@ -2151,7 +2226,16 @@ function normalizeWorldData(sourceVersion = 1) {
   nextStructureId = Math.max(1, Number(nextStructureId) || 1);
   nextTradeRouteId = Math.max(1, Number(nextTradeRouteId) || 1); nextCaravanId = Math.max(1, Number(nextCaravanId) || 1); nextArmyId = Math.max(1, Number(nextArmyId) || 1);
   const usedStructureIds = new Set();
-  for (const tile of tiles) { tile.biomass ??= tile.type === "forest" ? .8 : tile.type === "grass" ? .6 : tile.type === "sand" ? .1 : 0; }
+  climate ||= {};
+  climate.season = seasonDefs[climate.season] ? climate.season : seasonForYear(); climate.weather = weatherDefs[climate.weather] ? climate.weather : "clear";
+  const climateSeason = seasonDefs[climate.season], climateWeather = weatherDefs[climate.weather];
+  climate.seasonProgress = clamp(Number.isFinite(Number(climate.seasonProgress)) ? Number(climate.seasonProgress) : ((year - 1) % 1 + 1) % 1, 0, 1); climate.temperature = Number.isFinite(Number(climate.temperature)) ? Number(climate.temperature) : climateSeason.temperature + climateWeather.temperature; climate.rainfall = clamp(Number.isFinite(Number(climate.rainfall)) ? Number(climate.rainfall) : climateSeason.rainfall + climateWeather.rainfall, 0, 1); climate.weatherUntil = Number(climate.weatherUntil) || year + .8; climate.nextWeatherYear = Number(climate.nextWeatherYear) || climate.weatherUntil;
+  for (let position = 0; position < tiles.length; position++) {
+    const tile = tiles[position], y = Math.floor(position / MAP_W), latitudeTemperature = climate.temperature + 10 - Math.abs(y / (MAP_H - 1) - .5) * 28;
+    tile.biomass ??= tile.type === "forest" ? .8 : tile.type === "grass" ? .6 : tile.type === "sand" ? .1 : 0;
+    tile.moisture = clamp(Number.isFinite(Number(tile.moisture)) ? Number(tile.moisture) : tile.type === "forest" ? .7 : tile.type === "grass" ? .52 : .2, 0, 1);
+    tile.temperature = clamp(Number.isFinite(Number(tile.temperature)) ? Number(tile.temperature) : latitudeTemperature - (tile.type === "mountain" ? 8 : 0), -35, 55);
+  }
   for (const kingdom of kingdoms) kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4];
   for (const person of people) {
     person.race ||= getKingdom(person.kingdom)?.race || "human"; person.role ||= "civilian";
@@ -2266,15 +2350,26 @@ function normalizeWorldData(sourceVersion = 1) {
   if (sourceVersion < 3 && animals.length === 0) {
     populateWildlife(habitableTileIndices());
   }
+  if (sourceVersion < 10) {
+    const arrivals = { boar: 8, fox: 4 };
+    for (const [species, target] of Object.entries(arrivals)) {
+      let count = animals.filter(animal => animal.species === species).length;
+      for (let attempt = 0; count < target && attempt < target * 80; attempt++) {
+        const newcomer = spawnAnimal(randi(2, MAP_W - 3), randi(2, MAP_H - 3), species);
+        if (newcomer) { newcomer.hunger = 88; count++; }
+      }
+    }
+    addEvent("野猪与赤狐种群迁入大陆，食物网出现新的竞争关系。");
+  }
   rebuildWorldIndexes();
 }
 
 function restoreWorld(save, slot = activeSaveSlot) {
   if (!save || !Array.isArray(save.tiles) || !Array.isArray(save.people) || !Array.isArray(save.villages) || !Array.isArray(save.kingdoms)) throw new Error("invalid save");
   if (save.tiles.length !== MAP_W * MAP_H || save.people.length > 5000 || (save.animals?.length || 0) > 5000) throw new Error("unsupported save size");
-  tiles = save.tiles.map(t => Array.isArray(t) ? { type: t[0], fertility: t[1], biomass: t[2], fire: t[3], owner: t[4] } : t);
+  tiles = save.tiles.map(t => Array.isArray(t) ? { type: t[0], fertility: t[1], biomass: t[2], fire: t[3], owner: t[4], moisture: t[5], temperature: t[6] } : t);
   people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; tradeRoutes = Array.isArray(save.tradeRoutes) ? save.tradeRoutes : []; caravans = Array.isArray(save.caravans) ? save.caravans : []; armies = Array.isArray(save.armies) ? save.armies : []; indexesReady = false;
-  year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextStructureId = save.nextStructureId; nextTradeRouteId = save.nextTradeRouteId; nextCaravanId = save.nextCaravanId; nextArmyId = save.nextArmyId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
+  year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; climate = save.climate || {}; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextStructureId = save.nextStructureId; nextTradeRouteId = save.nextTradeRouteId; nextCaravanId = save.nextCaravanId; nextArmyId = save.nextArmyId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
   const settings = save.settings || {};
   camera = settings.camera || { x: 0, y: 0, zoom: 1 }; speed = settings.speed || 1; selectedTool = settings.selectedTool || "inspect"; brushSize = settings.brushSize || 2;
   randomDisastersEnabled = settings.randomDisastersEnabled ?? randomDisastersEnabled; disasterFrequency = disasterIntervals[settings.disasterFrequency] ? settings.disasterFrequency : disasterFrequency;
