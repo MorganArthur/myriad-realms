@@ -52,6 +52,13 @@ const professionDefs = {
   healer: { name: "治疗师", icon: "✚", color: "#76c9ad" },
   soldier: { name: "士兵", icon: "⚔", color: "#dd6b55" }
 };
+const unitDefs = {
+  militia: { name: "民兵", icon: "♟", attack: .78, defense: .82, speed: 1, range: 1.5, supply: .75, color: "#aa8462" },
+  infantry: { name: "步兵", icon: "🛡", attack: 1.08, defense: 1.22, speed: .92, range: 1.5, supply: 1, color: "#6f91ad" },
+  archer: { name: "弓手", icon: "➶", attack: .92, defense: .72, speed: 1, range: 3.6, supply: .9, color: "#76a45c" },
+  cavalry: { name: "骑兵", icon: "♞", attack: 1.32, defense: 1.02, speed: 1.55, range: 1.7, supply: 1.5, color: "#d39a55" },
+  siege: { name: "攻城兵", icon: "☄", attack: .62, defense: .68, speed: .58, range: 2.5, supply: 1.85, siege: 3.4, color: "#b66d55" }
+};
 const statusLabels = { peace: "和平", alliance: "同盟", war: "战争" };
 const disasterDefs = {
   earthquake: { name: "地震", icon: "🌎", color: "#d7c0a1", radius: 4, duration: 70 },
@@ -63,10 +70,10 @@ const disasterDefs = {
 };
 const disasterIntervals = { rare: [15, 24], normal: [8, 14], frequent: [4, 8] };
 
-let tiles = [], people = [], animals = [], villages = [], kingdoms = [], events = [], activeDisasters = [], tradeRoutes = [], caravans = [];
+let tiles = [], people = [], animals = [], villages = [], kingdoms = [], events = [], activeDisasters = [], tradeRoutes = [], caravans = [], armies = [];
 let year = 1, ticks = 0, running = false, speed = 1, selectedTool = "inspect", brushSize = 2;
 let camera = { x: 0, y: 0, zoom: 1 }, dragging = false, lastMouse = null, painting = false;
-let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextStructureId = 1, nextTradeRouteId = 1, nextCaravanId = 1, nextDisasterId = 1, selectedKingdomId = null, selectedTradeRouteId = null, activeSaveSlot = 1;
+let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextStructureId = 1, nextTradeRouteId = 1, nextCaravanId = 1, nextArmyId = 1, nextDisasterId = 1, selectedKingdomId = null, selectedTradeRouteId = null, selectedArmyId = null, activeSaveSlot = 1;
 let autoSaveEnabled = true, lastAutoSaveYear = 0, autoSavePending = false, indexesReady = false, renderDirty = true;
 let randomDisastersEnabled = true, disasterFrequency = "normal", nextDisasterYear = 10;
 let worldIndex = createWorldIndex();
@@ -185,6 +192,24 @@ function setRelation(aId, bId, status, score, silent = false) {
   }
 }
 
+function interveneDiplomacy(aId, bId, action) {
+  const a = getKingdom(aId), b = getKingdom(bId), relation = relationBetween(aId, bId);
+  if (!a || !b || a.defeated || b.defeated || !relation) return;
+  if (action === "war" && relation.status !== "war") {
+    setRelation(aId, bId, "war", Math.min(-55, relation.score));
+    a.warWeariness = Math.min(a.warWeariness || 0, 12); b.warWeariness = Math.min(b.warWeariness || 0, 12);
+    updateMilitaryRoles();
+    showToast("战争已经被神力点燃");
+  } else if (action === "peace" && relation.status === "war") {
+    setRelation(aId, bId, "peace", Math.max(-18, relation.score));
+    a.warWeariness = 0; b.warWeariness = 0;
+    updateMilitaryRoles();
+    showToast("交战双方接受了神谕停战");
+  }
+  updateTradeRoutes();
+  updateUI(); renderDirty = true;
+}
+
 function createKingdom(race = "human") {
   const id = kingdoms.length ? Math.max(...kingdoms.map(k => k.id)) + 1 : 0;
   const def = raceDefs[race] || raceDefs.human;
@@ -227,7 +252,7 @@ function generateWorld() {
     const biomass = type === "forest" ? rand(.72, 1) : type === "grass" ? rand(.5, .88) : type === "sand" ? rand(.05, .16) : 0;
     tiles.push({ type, fertility: type === "forest" ? 1 : type === "grass" ? .75 : .25, biomass, fire: 0, owner: -1 });
   }
-  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; tradeRoutes = []; caravans = []; year = 1; ticks = 0; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; indexesReady = false; lastAutoSaveYear = 1;
+  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; tradeRoutes = []; caravans = []; armies = []; year = 1; ticks = 0; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextArmyId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; indexesReady = false; lastAutoSaveYear = 1;
   camera = { x: 0, y: 0, zoom: 1 };
   const valid = habitableTileIndices();
   const anchors = [];
@@ -268,6 +293,7 @@ function spawnPerson(x, y, kingdom = null, race = null) {
   people.push({
     id: nextPersonId++, x, y, age: randi(16, 35), health: 100, food: rand(45, 90),
     kingdom, race, village: null, role: "civilian", profession: "laborer", previousProfession: null,
+    unitType: null, isGeneral: false, leadership: 1,
     happiness: rand(48, 72), needs: { nutrition: 65, shelter: 45, safety: 65, health: 80 },
     cooldown: randi(0, 20), attackCooldown: 0, blessed: false, dead: false
   });
@@ -464,7 +490,7 @@ function desiredProfessionCounts(village, adults) {
 function demobilizePerson(person) {
   person.role = "civilian";
   person.profession = professionDefs[person.previousProfession] && person.previousProfession !== "soldier" ? person.previousProfession : "laborer";
-  person.previousProfession = null;
+  person.previousProfession = null; person.unitType = null; person.isGeneral = false; person.leadership = 1;
 }
 
 function updateProfessions() {
@@ -826,6 +852,7 @@ function simulationStep() {
   if (ticks % 25 === 0) triggerRandomDisaster();
   simulateDisasters();
   simulateCaravans();
+  simulateArmies();
   regenerateBiomass(); if (ticks % 2 === 0) simulateAnimals(2);
   if (ticks % 10 === 0) produceResources();
   if (ticks % 60 === 0) dispatchCaravans();
@@ -847,7 +874,7 @@ function simulationStep() {
     if (person.food <= 0) person.health -= .7;
     if (tile?.fire > 0) person.health -= 4;
     if (person.blessed) person.health = Math.min(140, person.health + .08);
-    if (person.health <= 0 || person.age > race.life + rand(-7, 13)) { person.dead = true; continue; }
+    if (person.health <= 0 || person.age > race.life + rand(-7, 13)) { if (person.role === "soldier") recordSoldierCasualty(person); person.dead = true; continue; }
 
     person.cooldown--;
     person.attackCooldown = Math.max(0, (person.attackCooldown || 0) - 1);
@@ -1274,6 +1301,83 @@ function enemyKingdomIds(kingdomId) {
   return ids;
 }
 
+const armyNames = ["第一军团", "铁壁军", "远征军", "王庭卫队", "赤旗军", "边境军", "风暴军", "山岳军"];
+const getArmy = id => armies.find(army => army.id === id) || null;
+const armySoldiers = army => (army?.soldierIds || []).map(id => people.find(person => person.id === id && person.role === "soldier" && !person.dead)).filter(Boolean);
+const armyOfSoldier = personId => armies.find(army => army.soldierIds?.includes(personId)) || null;
+
+function recordSoldierCasualty(person) {
+  const army = armyOfSoldier(person.id); if (army) army.casualties = (army.casualties || 0) + 1;
+}
+
+function unitCountsFor(soldiers) {
+  const counts = Object.fromEntries(Object.keys(unitDefs).map(type => [type, 0]));
+  for (const soldier of soldiers) counts[unitDefs[soldier.unitType] ? soldier.unitType : "militia"]++;
+  return counts;
+}
+
+function assignUnitTypes(kingdom, soldiers) {
+  const realmVillages = villagesOfKingdom(kingdom.id), total = type => realmVillages.reduce((sum, village) => sum + buildingCount(village, type), 0), atWar = kingdomAtWar(kingdom.id);
+  const plan = {
+    siege: atWar ? Math.min(Math.floor(soldiers.length / 8), total("quarry") + Math.floor(total("barracks") / 2)) : 0,
+    cavalry: Math.min(Math.floor(soldiers.length / 5), total("market") + Math.floor(total("farm") / 2)),
+    archer: Math.min(Math.floor(soldiers.length / 4), total("lumber") * 2),
+    infantry: Math.min(Math.ceil(soldiers.length * .48), total("barracks") * 4)
+  };
+  const ordered = [...soldiers].sort((a, b) => Number(b.isGeneral) - Number(a.isGeneral) || a.id - b.id), assigned = new Set();
+  for (const type of ["siege", "cavalry", "archer", "infantry"]) for (let count = 0; count < plan[type]; count++) {
+    const soldier = ordered.find(candidate => !assigned.has(candidate.id)); if (!soldier) break;
+    soldier.unitType = type; assigned.add(soldier.id);
+  }
+  for (const soldier of ordered) if (!assigned.has(soldier.id)) soldier.unitType = total("barracks") ? "infantry" : "militia";
+}
+
+function armyRallyVillage(kingdomId) {
+  return [...villagesOfKingdom(kingdomId)].sort((a, b) => peopleOfVillage(b.id).length + buildingCount(b, "warehouse") * 8 + buildingCount(b, "barracks") * 6 - peopleOfVillage(a.id).length - buildingCount(a, "warehouse") * 8 - buildingCount(a, "barracks") * 6)[0] || null;
+}
+
+function reorganizeArmies(preserveAssignments = false) {
+  const soldierById = new Map(people.filter(person => person.role === "soldier" && !person.dead).map(person => [person.id, person]));
+  armies = armies.filter(army => getKingdom(army.kingdomId) && !getKingdom(army.kingdomId).defeated).map(army => ({ ...army, soldierIds: (army.soldierIds || []).filter(id => soldierById.get(id)?.kingdom === army.kingdomId) })).filter(army => army.soldierIds.length);
+  for (const person of soldierById.values()) { person.isGeneral = false; person.leadership = clamp(Number(person.leadership) || 1, .8, 1.4); }
+  for (const kingdom of kingdoms) {
+    if (kingdom.defeated) continue;
+    const soldiers = [...soldierById.values()].filter(person => person.kingdom === kingdom.id), atWar = kingdomAtWar(kingdom.id);
+    if (!soldiers.length) { armies = armies.filter(army => army.kingdomId !== kingdom.id); continue; }
+    const desiredCount = atWar ? Math.max(1, Math.ceil(soldiers.length / 10)) : soldiers.length >= 4 ? 1 : 0;
+    let realmArmies = armies.filter(army => army.kingdomId === kingdom.id);
+    while (realmArmies.length > desiredCount) {
+      const removed = realmArmies.pop(), receiver = realmArmies[0]; if (receiver) receiver.soldierIds.push(...removed.soldierIds);
+      armies = armies.filter(army => army.id !== removed.id);
+    }
+    while (realmArmies.length < desiredCount) {
+      const rally = armyRallyVillage(kingdom.id), army = { id: nextArmyId++, kingdomId: kingdom.id, name: `${kingdom.name}·${armyNames[(nextArmyId - 2) % armyNames.length]}`, soldierIds: [], generalId: null, rallyVillageId: rally?.id || null, targetVillageId: null, x: rally?.x || soldiers[0].x, y: rally?.y || soldiers[0].y, morale: 72, supply: 60, maxSupply: 60, status: atWar ? "assembling" : "garrison", createdYear: Math.floor(year), casualties: 0, siegeProgress: 0 };
+      armies.push(army); realmArmies.push(army); if (soldiers.length >= 3) addEvent(`${kingdom.name}组建了${army.name.split("·").pop()}。`);
+    }
+    if (!desiredCount) continue;
+    const assignedIds = preserveAssignments ? new Set(realmArmies.flatMap(army => army.soldierIds)) : new Set();
+    if (!preserveAssignments) for (const army of realmArmies) army.soldierIds = [];
+    let cursor = 0;
+    for (const soldier of soldiers) if (!assignedIds.has(soldier.id)) { realmArmies[cursor % realmArmies.length].soldierIds.push(soldier.id); cursor++; }
+    for (const army of realmArmies) {
+      const members = armySoldiers(army); if (!members.length) continue;
+      let general = members.find(person => person.id === army.generalId);
+      if (!general) {
+        general = [...members].sort((a, b) => (b.leadership || 1) + b.age * .002 + b.health * .001 - ((a.leadership || 1) + a.age * .002 + a.health * .001))[0];
+        const replacing = Boolean(army.generalId); army.generalId = general.id; general.leadership = rand(1.04, 1.34);
+        if (atWar && replacing) addEvent(`${army.name}推举${unitDefs[general.unitType]?.name || "军官"} #${general.id}接任将领。`);
+      }
+      general.isGeneral = true;
+      const rally = getVillage(army.rallyVillageId) || armyRallyVillage(kingdom.id); army.rallyVillageId = rally?.id || null;
+      const calculatedMaxSupply = Math.max(45, members.reduce((sum, person) => sum + (unitDefs[person.unitType]?.supply || 1) * 11, 0) + buildingCount(rally || {}, "warehouse") * 28);
+      army.maxSupply = preserveAssignments ? Math.max(45, Number(army.maxSupply) || calculatedMaxSupply) : calculatedMaxSupply;
+      army.supply = clamp(Number(army.supply) || army.maxSupply * .65, 0, army.maxSupply);
+      army.morale = clamp(Number(army.morale) || 70, 0, 100);
+      army.x = members.reduce((sum, person) => sum + person.x, 0) / members.length; army.y = members.reduce((sum, person) => sum + person.y, 0) / members.length;
+    }
+  }
+}
+
 function updateMilitaryRoles() {
   for (const kingdom of kingdoms) {
     const citizens = [], soldiers = [], recruits = [];
@@ -1282,12 +1386,53 @@ function updateMilitaryRoles() {
       citizens.push(person); (person.role === "soldier" ? soldiers : recruits).push(person);
     }
     const barracks = villagesOfKingdom(kingdom.id).reduce((sum, v) => sum + (v.buildings.barracks || 0), 0);
-    const desired = kingdomAtWar(kingdom.id) ? Math.min(Math.floor(citizens.length * .38), 2 + barracks * 6) : Math.min(Math.floor(citizens.length * .08), barracks * 2);
+    const desired = kingdomAtWar(kingdom.id) ? Math.min(Math.floor(citizens.length * .38), 8 + barracks * 6) : Math.min(Math.floor(citizens.length * .08), barracks * 2);
     for (let i = 0; i < desired - soldiers.length && i < recruits.length; i++) {
-      recruits[i].previousProfession = recruits[i].profession; recruits[i].role = "soldier"; recruits[i].profession = "soldier"; recruits[i].health = Math.max(recruits[i].health, 110);
+      recruits[i].previousProfession = recruits[i].profession; recruits[i].role = "soldier"; recruits[i].profession = "soldier"; recruits[i].unitType = barracks ? "infantry" : "militia"; recruits[i].health = Math.max(recruits[i].health, 110);
     }
     for (let i = desired; i < soldiers.length; i++) demobilizePerson(soldiers[i]);
+    assignUnitTypes(kingdom, peopleOfKingdom(kingdom.id).filter(person => person.role === "soldier"));
   }
+  reorganizeArmies();
+}
+
+function nearestFriendlySupplyVillage(army) {
+  return nearestEntity(villagesOfKingdom(army.kingdomId), army.x, army.y);
+}
+
+function simulateArmies() {
+  const survivors = [];
+  for (const army of armies) {
+    const members = armySoldiers(army), kingdom = getKingdom(army.kingdomId); if (!members.length || !kingdom || kingdom.defeated) continue;
+    army.x = members.reduce((sum, person) => sum + person.x, 0) / members.length; army.y = members.reduce((sum, person) => sum + person.y, 0) / members.length;
+    const general = members.find(person => person.id === army.generalId), leadership = general?.leadership || 1, enemyIds = new Set(enemyKingdomIds(army.kingdomId));
+    const currentTarget = getVillage(army.targetVillageId);
+    if (!currentTarget || !enemyIds.has(currentTarget.kingdom)) {
+      const targets = villages.filter(village => enemyIds.has(village.kingdom));
+      const target = nearestEntity(targets, army.x, army.y); army.targetVillageId = target?.id || null; army.siegeProgress = 0;
+    }
+    const target = getVillage(army.targetVillageId), rally = getVillage(army.rallyVillageId) || nearestFriendlySupplyVillage(army);
+    const supplyVillage = nearestFriendlySupplyVillage(army), supplyDistance = supplyVillage ? Math.hypot(supplyVillage.x - army.x, supplyVillage.y - army.y) : Infinity;
+    const nearbyEnemies = people.filter(person => !person.dead && enemyIds.has(person.kingdom) && Math.hypot(person.x - army.x, person.y - army.y) < 7).length;
+    if (!enemyIds.size) { army.status = "garrison"; army.targetVillageId = null; army.siegeProgress = 0; }
+    else if (army.morale < 18 || army.supply <= 0) army.status = "retreat";
+    else if (nearbyEnemies) army.status = "battle";
+    else if (target && Math.hypot(target.x - army.x, target.y - army.y) < 4) army.status = "siege";
+    else army.status = "advance";
+    const consumption = members.reduce((sum, person) => sum + (unitDefs[person.unitType]?.supply || 1), 0) * .022 * (["battle", "siege"].includes(army.status) ? 1.75 : .75);
+    army.supply = Math.max(0, army.supply - consumption);
+    if (supplyDistance < 5.5 && supplyVillage) {
+      const realm = getKingdom(army.kingdomId), loadRate = 1.1 + buildingCount(supplyVillage, "warehouse") * 1.8 + buildingCount(supplyVillage, "barracks") * .7;
+      const available = Math.min(supplyVillage.inventory?.food || 0, realm.resources.food || 0), loaded = Math.min(army.maxSupply - army.supply, loadRate, available);
+      if (loaded > 0) { army.supply += loaded; supplyVillage.inventory.food -= loaded; realm.resources.food -= loaded; }
+    }
+    const supplyRatio = army.supply / Math.max(1, army.maxSupply), targetMorale = clamp(42 + supplyRatio * 38 + (leadership - 1) * 55 - kingdom.warWeariness * .12 - (army.status === "retreat" ? 12 : 0), 5, 96);
+    army.morale += (targetMorale - army.morale) * .018;
+    if (army.supply <= 0) for (const person of members) { person.health -= .025; person.happiness = Math.max(0, person.happiness - .04); }
+    if (army.status === "retreat" && rally && Math.hypot(rally.x - army.x, rally.y - army.y) < 5 && army.supply > army.maxSupply * .3) army.morale = Math.min(65, army.morale + .2);
+    survivors.push(army);
+  }
+  armies = survivors;
 }
 
 function walkToward(person, targetX, targetY) {
@@ -1306,25 +1451,38 @@ function walkToward(person, targetX, targetY) {
 function militaryBehavior(person) {
   const enemyIds = new Set(enemyKingdomIds(person.kingdom));
   if (!enemyIds.size) { demobilizePerson(person); return; }
-  const nearbyEnemy = findNearbyEntity(worldIndex.peopleSpatial, person.x, person.y, 5, candidate => candidate.id !== person.id && enemyIds.has(candidate.kingdom), true);
+  const army = armyOfSoldier(person.id), unit = unitDefs[person.unitType] || unitDefs.militia, general = army ? people.find(candidate => candidate.id === army.generalId) : null;
+  const moraleFactor = army ? clamp(.45 + army.morale / 100 * .75, .45, 1.2) : .85, supplyFactor = army ? clamp(.45 + army.supply / Math.max(1, army.maxSupply), .45, 1.25) : .8, leadership = general?.leadership || 1;
+  person.cooldown = Math.max(2, Math.round(person.cooldown / unit.speed));
+  if (army?.status === "retreat") {
+    const rally = getVillage(army.rallyVillageId); if (rally) walkToward(person, rally.x, rally.y); return;
+  }
+  const nearbyEnemy = findNearbyEntity(worldIndex.peopleSpatial, person.x, person.y, Math.max(5, unit.range + 1), candidate => candidate.id !== person.id && enemyIds.has(candidate.kingdom), true);
   if (nearbyEnemy) {
     const distance = Math.hypot(nearbyEnemy.x - person.x, nearbyEnemy.y - person.y);
-    if (distance <= 1.5 && person.attackCooldown <= 0) {
-      nearbyEnemy.health -= rand(12, 25) * (raceDefs[person.race]?.combat || 1) * (person.blessed ? 1.35 : 1);
-      person.health -= rand(1, 7); person.attackCooldown = 5;
-      if (nearbyEnemy.health <= 0) nearbyEnemy.dead = true;
+    if (distance <= unit.range && person.attackCooldown <= 0) {
+      const enemyUnit = unitDefs[nearbyEnemy.unitType] || unitDefs.militia, damage = rand(10, 21) * unit.attack * (raceDefs[person.race]?.combat || 1) * moraleFactor * supplyFactor * leadership * (person.blessed ? 1.3 : 1) / enemyUnit.defense;
+      nearbyEnemy.health -= damage;
+      if (distance <= enemyUnit.range && unit.range < 2.5) person.health -= rand(1, 6) * enemyUnit.attack / unit.defense;
+      person.attackCooldown = unit.range > 2 ? 7 : unit.speed > 1.2 ? 4 : 5;
+      if (nearbyEnemy.health <= 0) { if (nearbyEnemy.role === "soldier") recordSoldierCasualty(nearbyEnemy); nearbyEnemy.dead = true; }
     } else walkToward(person, nearbyEnemy.x, nearbyEnemy.y);
     return;
   }
-  const target = nearestEntity(villages, person.x, person.y, village => enemyIds.has(village.kingdom));
+  const target = getVillage(army?.targetVillageId) || nearestEntity(villages, person.x, person.y, village => enemyIds.has(village.kingdom));
   if (!target) return;
   const distance = Math.hypot(target.x - person.x, target.y - person.y);
-  if (distance <= 2 && person.attackCooldown <= 0) {
-    const walls = buildingCount(target, "wall"), siegeDamage = rand(2, 5) / (1 + walls * .2);
+  if (distance <= unit.range + .55 && person.attackCooldown <= 0) {
+    const walls = buildingCount(target, "wall"), siegePower = unit.siege || .72, wallResistance = unit.siege ? 1 + walls * .04 : 1 + walls * .22;
+    const siegeDamage = rand(1.8, 4.2) * siegePower * moraleFactor * supplyFactor * leadership / wallResistance;
     target.hp -= siegeDamage; person.attackCooldown = 5;
-    if (walls && Math.random() < .12) damageRandomBuilding(target, 1, rand(3, 8), "wall");
+    if (army) army.siegeProgress += siegeDamage;
+    if (walls && Math.random() < .08 * siegePower) damageRandomBuilding(target, 1, rand(3, 7) * siegePower, "wall");
     if (target.hp <= 0) captureVillage(target, person.kingdom);
-  } else walkToward(person, target.x, target.y);
+  } else {
+    walkToward(person, target.x, target.y);
+    if (unit.speed > 1.3 && Math.random() < .4 && Math.hypot(target.x - person.x, target.y - person.y) > 4) walkToward(person, target.x, target.y);
+  }
 }
 
 function captureVillage(village, newKingdomId) {
@@ -1333,6 +1491,7 @@ function captureVillage(village, newKingdomId) {
   village.kingdom = newKingdomId; village.hp = 100;
   const capturedHouse = (village.structures || []).find(structure => structure.type === "house");
   if (capturedHouse && buildingCount(village, "house") > 1) damageStructure(village, capturedHouse, capturedHouse.maxHp, false);
+  for (const army of armies) if (army.targetVillageId === village.id) { army.targetVillageId = null; army.siegeProgress = 0; army.status = "advance"; }
   for (let position = 0; position < tiles.length; position++) {
     const t = tiles[position]; if (t.owner !== oldKingdomId) continue;
     const x = position % MAP_W, y = Math.floor(position / MAP_W);
@@ -1465,7 +1624,7 @@ function inventoryHtml(village) {
 }
 
 function inspectAt(x, y) {
-  selectedKingdomId = null; selectedTradeRouteId = null;
+  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null;
   const person = people.find(p => Math.hypot(p.x - x, p.y - y) < 1.5);
   const caravan = caravans.find(candidate => Math.hypot(candidate.x - x, candidate.y - y) < 1.35);
   const animal = animals.find(a => Math.hypot(a.x - x, a.y - y) < 1.5);
@@ -1480,7 +1639,9 @@ function inspectAt(x, y) {
   if (person) {
     const k = getKingdom(person.kingdom), v = getVillage(person.village);
     const race = raceDefs[person.race] || raceDefs.human, profession = professionDefs[person.role === "soldier" ? "soldier" : person.profession] || professionDefs.laborer;
-    box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${profession.icon} ${profession.name} #${person.id}</h4><div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div><div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
+    const unit = person.role === "soldier" ? unitDefs[person.unitType] || unitDefs.militia : null, army = unit ? armyOfSoldier(person.id) : null;
+    const militaryRows = unit ? `<div class="detail-row"><span>军职 / 兵种</span><b>${person.isGeneral ? "★ 将领" : "士兵"} · ${unit.icon} ${unit.name}</b></div><div class="detail-row"><span>所属军团</span><b>${army?.name || "地方守军"}</b></div>${army ? `<div class="detail-row"><span>军团士气 / 补给</span><b>${Math.round(army.morale)} / ${Math.round(army.supply)}</b></div>` : ""}` : "";
+    box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${unit ? `${unit.icon} ${unit.name}` : `${profession.icon} ${profession.name}`} #${person.id}</h4><div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div>${militaryRows}<div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
   } else if (caravan) {
     const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), source = getVillage(caravan.fromVillage), destination = getVillage(caravan.toVillage), cargo = tradeResourceDefs[caravan.resource], progress = route?.path?.length > 1 ? caravan.pathIndex / (route.path.length - 1) * 100 : 0;
     box.innerHTML = `<h4>${route?.mode === "sea" ? "⛵" : "🐴"} 商队 #${caravan.id}</h4><div class="detail-row"><span>路线</span><b>${source?.name} → ${destination?.name}</b></div><div class="detail-row"><span>货物</span><b>${cargo?.icon} ${cargo?.name} ${Math.floor(caravan.amount)}</b></div><div class="detail-row"><span>交换货物</span><b>${caravan.returnResource ? `${tradeResourceDefs[caravan.returnResource].icon} ${tradeResourceDefs[caravan.returnResource].name} ${Math.floor(caravan.returnAmount)}` : "国内调拨"}</b></div><div class="detail-row"><span>状态</span><b>${route?.status === "blockaded" ? "突破封锁" : "运输中"}</b></div><div class="need-list">${needMeter("行程", progress)}${needMeter("商队安全", caravan.hp)}</div>`;
@@ -1501,7 +1662,7 @@ function inspectAt(x, y) {
 
 function inspectKingdom(kingdomId) {
   const kingdom = getKingdom(kingdomId); if (!kingdom) return;
-  selectedKingdomId = kingdomId; selectedTradeRouteId = null;
+  selectedKingdomId = kingdomId; selectedTradeRouteId = null; selectedArmyId = null;
   const box = document.getElementById("selectionCard"), citizens = peopleOfKingdom(kingdomId), realmVillages = villagesOfKingdom(kingdomId), race = raceDefs[kingdom.race] || raceDefs.human;
   const raceCounts = Object.fromEntries(Object.keys(raceDefs).map(key => [key, 0]));
   let soldiers = 0;
@@ -1510,20 +1671,30 @@ function inspectKingdom(kingdomId) {
     if (raceCounts[citizen.race] !== undefined) raceCounts[citizen.race]++;
   }
   const demographics = Object.entries(raceDefs).map(([key, def]) => `${def.icon}${raceCounts[key]}`).join(" ");
-  const jobs = professionCounts(citizens), happiness = averageHappiness(citizens);
+  const jobs = professionCounts(citizens), happiness = averageHappiness(citizens), realmArmies = armies.filter(army => army.kingdomId === kingdomId);
   const structures = realmVillages.flatMap(village => village.structures || []), roads = structures.filter(structure => structure.type === "road").length, walls = structures.filter(structure => structure.type === "wall").length;
   const relations = Object.entries(kingdom.relations || {}).map(([id, r]) => `${getKingdom(Number(id))?.name || "未知"}：${statusLabels[r.status]}`).join(" · ") || "尚无外交关系";
   box.classList.remove("empty");
-  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>主体种族</span><b>${race.name}</b></div><div class="detail-row"><span>人口 / 军队</span><b>${citizens.length} / ${soldiers}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(happiness)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
+  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>主体种族</span><b>${race.name}</b></div><div class="detail-row"><span>人口 / 士兵 / 军团</span><b>${citizens.length} / ${soldiers} / ${realmArmies.length}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(happiness)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
 }
 
 function inspectTradeRoute(routeId) {
   const route = tradeRoutes.find(candidate => candidate.id === routeId); if (!route) { selectedTradeRouteId = null; return; }
-  selectedKingdomId = null; selectedTradeRouteId = routeId;
+  selectedKingdomId = null; selectedTradeRouteId = routeId; selectedArmyId = null;
   const from = getVillage(route.fromVillage), to = getVillage(route.toVillage), inTransit = caravans.find(caravan => caravan.routeId === route.id), box = document.getElementById("selectionCard");
   const status = route.status === "active" ? "畅通" : route.status === "blockaded" ? "战争封锁" : "设施中断";
   box.classList.remove("empty");
   box.innerHTML = `<h4>${route.mode === "sea" ? "⚓" : "═"} 贸易路线 #${route.id}</h4><div class="detail-row"><span>起讫</span><b>${from?.name} ↔ ${to?.name}</b></div><div class="detail-row"><span>运输方式</span><b>${route.mode === "sea" ? "海运" : "陆运"}</b></div><div class="detail-row"><span>路线状态</span><b>${status}</b></div><div class="detail-row"><span>交付次数</span><b>${route.deliveries || 0}</b></div><div class="detail-row"><span>累计货运</span><b>${Math.floor(route.delivered || 0)}</b></div><div class="detail-row"><span>损失商队</span><b>${route.losses || 0}</b></div><div class="detail-row"><span>在途货物</span><b>${inTransit ? `${tradeResourceDefs[inTransit.resource].icon} ${Math.floor(inTransit.amount)}` : "暂无"}</b></div>`;
+}
+
+function inspectArmy(armyId) {
+  const army = getArmy(armyId); if (!army) { selectedArmyId = null; return; }
+  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = armyId;
+  const members = armySoldiers(army), general = members.find(person => person.id === army.generalId), kingdom = getKingdom(army.kingdomId), target = getVillage(army.targetVillageId), rally = getVillage(army.rallyVillageId), units = unitCountsFor(members), box = document.getElementById("selectionCard");
+  const unitLine = Object.entries(unitDefs).filter(([type]) => units[type] > 0).map(([type, def]) => `${def.icon}${def.name} ${units[type]}`).join(" · ") || "暂无士兵";
+  const statusLabels = { assembling: "集结", garrison: "驻防", advance: "推进", battle: "交战", siege: "围城", retreat: "撤退" };
+  box.classList.remove("empty");
+  box.innerHTML = `<h4><span style="color:${kingdom?.color}">⚑</span> ${army.name}</h4><div class="detail-row"><span>将领</span><b>${general ? `★ #${general.id} · 统率 ${general.leadership.toFixed(2)}` : "等待任命"}</b></div><div class="detail-row"><span>状态 / 兵力</span><b>${statusLabels[army.status] || army.status} · ${members.length}</b></div><div class="detail-row"><span>集结地</span><b>${rally?.name || "野外"}</b></div><div class="detail-row"><span>战役目标</span><b>${target?.name || "暂无"}</b></div><div class="detail-row"><span>伤亡 / 攻城进度</span><b>${army.casualties || 0} / ${Math.floor(army.siegeProgress || 0)}</b></div><p class="muted unit-line">${unitLine}</p><div class="need-list">${needMeter("军团士气", army.morale)}${needMeter("军团补给", army.supply / Math.max(1, army.maxSupply) * 100)}</div>`;
 }
 
 function resizeCanvas() {
@@ -1565,6 +1736,27 @@ function renderCaravans(m) {
     ctx.save(); ctx.fillStyle = caravan.hp < 35 ? "#d85d49" : route.mode === "sea" ? "#d7e3d8" : "#4c3325"; ctx.strokeStyle = def?.color || "#e6cc86"; ctx.lineWidth = Math.max(1, m.size * .16);
     if (route.mode === "sea") { ctx.translate(sx, sy); ctx.rotate(Math.PI / 4); ctx.fillRect(-size, -size, size * 2, size * 2); ctx.strokeRect(-size, -size, size * 2, size * 2); }
     else { ctx.fillRect(sx - size, sy - size * .72, size * 2, size * 1.44); ctx.strokeRect(sx - size, sy - size * .72, size * 2, size * 1.44); }
+    ctx.restore();
+  }
+}
+
+function renderArmies(m) {
+  for (const army of armies) {
+    const members = armySoldiers(army); if (!members.length) continue;
+    const kingdom = getKingdom(army.kingdomId), sx = m.ox + (army.x + .5) * m.size, sy = m.oy + (army.y + .5) * m.size, target = getVillage(army.targetVillageId);
+    if (sx < -30 || sy < -30 || sx > m.width + 30 || sy > m.height + 30) continue;
+    ctx.save();
+    if (target && ["advance", "siege"].includes(army.status)) {
+      ctx.globalAlpha = .38; ctx.strokeStyle = kingdom?.color || "#eee"; ctx.lineWidth = Math.max(1, m.size * .16); ctx.setLineDash([m.size, m.size * .7]);
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(m.ox + (target.x + .5) * m.size, m.oy + (target.y + .5) * m.size); ctx.stroke(); ctx.setLineDash([]);
+    }
+    const radius = Math.max(5, m.size * (1.05 + Math.min(1.2, members.length * .07)));
+    ctx.globalAlpha = army.status === "retreat" ? .55 : .82; ctx.strokeStyle = army.status === "siege" ? "#e6a14c" : army.status === "battle" ? "#e26752" : kingdom?.color || "#ddd"; ctx.lineWidth = Math.max(1.5, m.size * .25);
+    ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = .95; ctx.fillStyle = kingdom?.color || "#ddd"; ctx.fillRect(sx - 1, sy - radius - m.size * 1.25, Math.max(2, m.size * .22), m.size * 1.3);
+    ctx.beginPath(); ctx.moveTo(sx + m.size * .15, sy - radius - m.size * 1.2); ctx.lineTo(sx + m.size * 1.15, sy - radius - m.size * .85); ctx.lineTo(sx + m.size * .15, sy - radius - m.size * .5); ctx.closePath(); ctx.fill();
+    const supplyRatio = clamp(army.supply / Math.max(1, army.maxSupply), 0, 1); ctx.fillStyle = "#251816"; ctx.fillRect(sx - radius, sy + radius + 2, radius * 2, Math.max(2, m.size * .22)); ctx.fillStyle = supplyRatio < .25 ? "#df5f49" : "#d3af59"; ctx.fillRect(sx - radius, sy + radius + 2, radius * 2 * supplyRatio, Math.max(2, m.size * .22));
+    if (m.size > 5) { ctx.fillStyle = "#fff1c6"; ctx.font = `${Math.max(8, m.size * 1.05)}px Microsoft YaHei`; ctx.textAlign = "center"; ctx.fillText(army.name.split("·").pop(), sx, sy - radius - m.size * 1.45); }
     ctx.restore();
   }
 }
@@ -1647,6 +1839,7 @@ function render() {
     if (m.size > 5) { ctx.fillStyle = "#fff0c9"; ctx.font = `${Math.max(9, m.size * 1.25)}px Microsoft YaHei`; ctx.textAlign = "center"; ctx.fillText(v.name, sx, sy - m.size * 1.3); }
   }
   renderCaravans(m);
+  renderArmies(m);
   for (const p of people) {
     const sx = m.ox + (p.x + .5) * m.size, sy = m.oy + (p.y + .5) * m.size, k = getKingdom(p.kingdom);
     if (sx < -8 || sy < -8 || sx > m.width + 8 || sy > m.height + 8) continue;
@@ -1657,7 +1850,8 @@ function render() {
     else if (p.race === "dwarf") ctx.fillRect(sx - r, sy - r * .72, r * 2, r * 1.44);
     else if (p.race === "orc") { ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.PI / 4); ctx.fillRect(-r * .72, -r * .72, r * 1.44, r * 1.44); ctx.restore(); }
     else { ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); }
-    if (m.size > 6) { const job = professionDefs[p.role === "soldier" ? "soldier" : p.profession] || professionDefs.laborer; ctx.fillStyle = job.color; ctx.fillRect(sx - r, sy + r + 1, r * 2, Math.max(1, m.size * .16)); }
+    if (m.size > 6) { const marker = p.role === "soldier" ? unitDefs[p.unitType] || unitDefs.militia : professionDefs[p.profession] || professionDefs.laborer; ctx.fillStyle = marker.color; ctx.fillRect(sx - r, sy + r + 1, r * 2, Math.max(1, m.size * .16)); }
+    if (p.isGeneral && m.size > 5) { ctx.fillStyle = "#ffe37d"; ctx.beginPath(); ctx.moveTo(sx, sy - r - 3); ctx.lineTo(sx + 2.5, sy - r + 1); ctx.lineTo(sx - 2.5, sy - r + 1); ctx.closePath(); ctx.fill(); }
     if (p.plague > 0 && m.size > 5) { ctx.strokeStyle = "#c2ed74"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2); ctx.stroke(); }
   }
 }
@@ -1725,6 +1919,13 @@ function updateUI() {
     return `<button class="trade-route-item ${route.status}" data-trade-route="${route.id}"><b>${route.mode === "sea" ? "⚓" : "═"} ${from?.name || "失落聚落"} ↔ ${to?.name || "失落聚落"}</b><span>${status} · ${route.deliveries || 0} 次交付 · 货运 ${Math.floor(route.delivered || 0)}</span></button>`;
   }).join("");
   document.getElementById("tradeList").innerHTML = tradeRoutes.length ? `<div class="trade-summary"><span>畅通<b>${activeRoutes}</b></span><span>商队<b>${caravans.length}</b></span><span>封锁<b>${blockedRoutes}</b></span><span>累计货运<b>${Math.floor(delivered)}</b></span></div><div class="trade-routes">${routeItems}</div>` : `<p class="muted">市场和仓库发展后将建立贸易路线</p>`;
+  const armyTroops = armies.reduce((sum, army) => sum + armySoldiers(army).length, 0), lowSupplyArmies = armies.filter(army => army.supply < army.maxSupply * .25).length, sieges = armies.filter(army => army.status === "siege").length;
+  const armyStatusLabels = { assembling: "集结", garrison: "驻防", advance: "推进", battle: "交战", siege: "围城", retreat: "撤退" };
+  const armyItems = [...armies].sort((a, b) => ["battle", "siege", "advance", "retreat", "assembling", "garrison"].indexOf(a.status) - ["battle", "siege", "advance", "retreat", "assembling", "garrison"].indexOf(b.status)).slice(0, 8).map(army => {
+    const kingdom = getKingdom(army.kingdomId), members = armySoldiers(army), target = getVillage(army.targetVillageId), supply = Math.round(army.supply / Math.max(1, army.maxSupply) * 100);
+    return `<button class="army-item ${army.status}" data-army="${army.id}" style="border-color:${kingdom?.color || "#777"}"><b>⚑ ${army.name}</b><span>${armyStatusLabels[army.status] || army.status} · ${members.length} 人${target ? ` → ${target.name}` : ""}</span><i><em style="width:${supply}%"></em></i><small>士气 ${Math.round(army.morale)} · 补给 ${supply}%</small></button>`;
+  }).join("");
+  document.getElementById("armyList").innerHTML = armies.length ? `<div class="army-summary"><span>军团<b>${armies.length}</b></span><span>兵力<b>${armyTroops}</b></span><span>围城<b>${sieges}</b></span><span>缺粮<b>${lowSupplyArmies}</b></span></div><div class="army-items">${armyItems}</div>` : `<p class="muted">兵营扩张或战争爆发后将组建军团</p>`;
   document.getElementById("disasterList").innerHTML = activeDisasters.length ? activeDisasters.map(disaster => {
     const def = disasterDefs[disaster.type], progress = clamp(disaster.duration / Math.max(1, disaster.maxDuration) * 100, 0, 100);
     return `<div class="disaster-item ${disaster.type}"><div><b>${def.icon} ${def.name}</b><span>${disasterLocation(disaster)} · 约 ${(disaster.duration * .02).toFixed(1)} 纪元</span></div><i style="width:${progress}%"></i></div>`;
@@ -1737,9 +1938,10 @@ function updateUI() {
   }).join("") : `<p class="muted">世界尚无文明</p>`;
   const relationOrder = { war: 0, alliance: 1, peace: 2 };
   const sortedRelations = relationPairs.sort((a, b) => relationOrder[a.status] - relationOrder[b.status]);
-  document.getElementById("diplomacyList").innerHTML = sortedRelations.length ? sortedRelations.map(r => `<div class="relation-item ${r.status}"><b>${r.a.name} ↔ ${r.b.name}</b><span>${statusLabels[r.status]} <i class="relation-score">${r.score}</i></span></div>`).join("") : `<p class="muted">尚未建立国家关系</p>`;
+  document.getElementById("diplomacyList").innerHTML = sortedRelations.length ? sortedRelations.map(r => `<div class="relation-item ${r.status}"><b>${r.a.name} ↔ ${r.b.name}</b><span>${statusLabels[r.status]} <i class="relation-score">${r.score}</i></span><button class="relation-action" data-diplomacy-action="${r.status === "war" ? "peace" : "war"}" data-kingdom-a="${r.a.id}" data-kingdom-b="${r.b.id}" title="神力干预外交">${r.status === "war" ? "促成议和" : "挑起战争"}</button></div>`).join("") : `<p class="muted">尚未建立国家关系</p>`;
   if (selectedKingdomId !== null) inspectKingdom(selectedKingdomId);
   if (selectedTradeRouteId !== null) inspectTradeRoute(selectedTradeRouteId);
+  if (selectedArmyId !== null) inspectArmy(selectedArmyId);
 }
 
 function showToast(msg) { const el = document.getElementById("toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => el.classList.remove("show"), 1700); }
@@ -1756,10 +1958,10 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 7, savedAt: new Date().toISOString(),
-    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length },
+    version: 8, savedAt: new Date().toISOString(),
+    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length },
     worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1]),
-    people, animals, villages, kingdoms, events, activeDisasters, tradeRoutes, caravans, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextDisasterId, nextDisasterYear,
+    people, animals, villages, kingdoms, events, activeDisasters, tradeRoutes, caravans, armies, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextDisasterId, nextDisasterYear,
     settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency }
   };
 }
@@ -1785,7 +1987,7 @@ function scheduleAutoSave() {
 
 function normalizeWorldData(sourceVersion = 1) {
   nextStructureId = Math.max(1, Number(nextStructureId) || 1);
-  nextTradeRouteId = Math.max(1, Number(nextTradeRouteId) || 1); nextCaravanId = Math.max(1, Number(nextCaravanId) || 1);
+  nextTradeRouteId = Math.max(1, Number(nextTradeRouteId) || 1); nextCaravanId = Math.max(1, Number(nextCaravanId) || 1); nextArmyId = Math.max(1, Number(nextArmyId) || 1);
   const usedStructureIds = new Set();
   for (const tile of tiles) { tile.biomass ??= tile.type === "forest" ? .8 : tile.type === "grass" ? .6 : tile.type === "sand" ? .1 : 0; }
   for (const kingdom of kingdoms) kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4];
@@ -1793,6 +1995,8 @@ function normalizeWorldData(sourceVersion = 1) {
     person.race ||= getKingdom(person.kingdom)?.race || "human"; person.role ||= "civilian";
     person.profession = person.role === "soldier" ? "soldier" : person.age < 16 ? "child" : professionDefs[person.profession] && person.profession !== "soldier" ? person.profession : "laborer";
     person.previousProfession = professionDefs[person.previousProfession] && person.previousProfession !== "soldier" ? person.previousProfession : null;
+    person.unitType = person.role === "soldier" && unitDefs[person.unitType] ? person.unitType : person.role === "soldier" ? "militia" : null;
+    person.isGeneral = person.role === "soldier" && Boolean(person.isGeneral); person.leadership = person.role === "soldier" ? clamp(Number(person.leadership) || 1, .8, 1.4) : 1;
     person.happiness = clamp(Number(person.happiness) || 60, 0, 100);
     const savedNeeds = person.needs || {};
     person.needs = {
@@ -1857,11 +2061,22 @@ function normalizeWorldData(sourceVersion = 1) {
     usedCaravanIds.add(id); nextCaravanId = Math.max(nextCaravanId, id + 1);
     return { ...caravan, id, fromVillage: getVillage(caravan.fromVillage) ? caravan.fromVillage : route.fromVillage, toVillage: getVillage(caravan.toVillage) ? caravan.toVillage : route.toVillage, resource: caravan.resource, amount: Math.max(.1, Number(caravan.amount) || 1), returnResource: tradeResourceDefs[caravan.returnResource] ? caravan.returnResource : null, returnAmount: Math.max(0, Number(caravan.returnAmount) || 0), x: clamp(Number(caravan.x) || route.path[0].x, 0, MAP_W - 1), y: clamp(Number(caravan.y) || route.path[0].y, 0, MAP_H - 1), pathIndex: clamp(Math.floor(Number(caravan.pathIndex) || 0), 0, route.path.length - 1), segmentProgress: Math.max(0, Number(caravan.segmentProgress) || 0), hp: clamp(Number(caravan.hp) || 100, 1, 100), status: "traveling", departedYear: Number(caravan.departedYear) || year };
   });
+  const soldierIds = new Set(people.filter(person => person.role === "soldier" && !person.dead).map(person => person.id)), usedArmyIds = new Set(), assignedSoldiers = new Set();
+  armies = (Array.isArray(armies) ? armies : []).filter(army => army && getKingdom(army.kingdomId) && !getKingdom(army.kingdomId).defeated).slice(0, 60).map(army => {
+    const savedId = Number(army.id); let id = Number.isFinite(savedId) && savedId > 0 && !usedArmyIds.has(savedId) ? savedId : nextArmyId++;
+    usedArmyIds.add(id); nextArmyId = Math.max(nextArmyId, id + 1);
+    const ids = [...new Set(Array.isArray(army.soldierIds) ? army.soldierIds.map(Number) : [])].filter(personId => soldierIds.has(personId) && !assignedSoldiers.has(personId) && people.find(person => person.id === personId)?.kingdom === army.kingdomId);
+    for (const personId of ids) assignedSoldiers.add(personId);
+    const rally = getVillage(army.rallyVillageId)?.kingdom === army.kingdomId ? army.rallyVillageId : armyRallyVillage(army.kingdomId)?.id || null;
+    const generalId = ids.includes(Number(army.generalId)) ? Number(army.generalId) : null;
+    return { ...army, id, name: cleanText(army.name) || `${getKingdom(army.kingdomId).name}·军团`, soldierIds: ids, generalId, rallyVillageId: rally, targetVillageId: getVillage(army.targetVillageId) ? army.targetVillageId : null, x: clamp(Number(army.x) || getVillage(rally)?.x || 0, 0, MAP_W - 1), y: clamp(Number(army.y) || getVillage(rally)?.y || 0, 0, MAP_H - 1), morale: clamp(Number(army.morale) || 70, 0, 100), supply: Math.max(0, Number(army.supply) || 0), maxSupply: Math.max(30, Number(army.maxSupply) || 60), status: ["assembling", "garrison", "advance", "battle", "siege", "retreat"].includes(army.status) ? army.status : "garrison", createdYear: Math.max(1, Number(army.createdYear) || Math.floor(year)), casualties: Math.max(0, Number(army.casualties) || 0), siegeProgress: Math.max(0, Number(army.siegeProgress) || 0) };
+  }).filter(army => army.soldierIds.length);
+  reorganizeArmies(true);
   nextPersonId ||= Math.max(0, ...people.map(p => p.id)) + 1;
   nextAnimalId ||= Math.max(0, ...animals.map(a => a.id)) + 1;
   nextVillageId ||= Math.max(0, ...villages.map(v => v.id)) + 1;
   nextStructureId = Math.max(nextStructureId, 1, ...villages.flatMap(village => village.structures || []).map(structure => structure.id + 1));
-  nextTradeRouteId = Math.max(nextTradeRouteId, 1, ...tradeRoutes.map(route => route.id + 1)); nextCaravanId = Math.max(nextCaravanId, 1, ...caravans.map(caravan => caravan.id + 1));
+  nextTradeRouteId = Math.max(nextTradeRouteId, 1, ...tradeRoutes.map(route => route.id + 1)); nextCaravanId = Math.max(nextCaravanId, 1, ...caravans.map(caravan => caravan.id + 1)); nextArmyId = Math.max(nextArmyId, 1, ...armies.map(army => army.id + 1));
   nextDisasterId = Math.max(1, Number(nextDisasterId) || 1);
   activeDisasters = activeDisasters.filter(disaster => disaster && disasterDefs[disaster.type] && Number.isFinite(Number(disaster.x)) && Number.isFinite(Number(disaster.y))).slice(0, 12).map(disaster => {
     const def = disasterDefs[disaster.type], intensity = clamp(Number(disaster.intensity) || 2, 1, 6);
@@ -1886,12 +2101,12 @@ function restoreWorld(save, slot = activeSaveSlot) {
   if (!save || !Array.isArray(save.tiles) || !Array.isArray(save.people) || !Array.isArray(save.villages) || !Array.isArray(save.kingdoms)) throw new Error("invalid save");
   if (save.tiles.length !== MAP_W * MAP_H || save.people.length > 5000 || (save.animals?.length || 0) > 5000) throw new Error("unsupported save size");
   tiles = save.tiles.map(t => Array.isArray(t) ? { type: t[0], fertility: t[1], biomass: t[2], fire: t[3], owner: t[4] } : t);
-  people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; tradeRoutes = Array.isArray(save.tradeRoutes) ? save.tradeRoutes : []; caravans = Array.isArray(save.caravans) ? save.caravans : []; indexesReady = false;
-  year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextStructureId = save.nextStructureId; nextTradeRouteId = save.nextTradeRouteId; nextCaravanId = save.nextCaravanId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
+  people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; tradeRoutes = Array.isArray(save.tradeRoutes) ? save.tradeRoutes : []; caravans = Array.isArray(save.caravans) ? save.caravans : []; armies = Array.isArray(save.armies) ? save.armies : []; indexesReady = false;
+  year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextStructureId = save.nextStructureId; nextTradeRouteId = save.nextTradeRouteId; nextCaravanId = save.nextCaravanId; nextArmyId = save.nextArmyId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
   const settings = save.settings || {};
   camera = settings.camera || { x: 0, y: 0, zoom: 1 }; speed = settings.speed || 1; selectedTool = settings.selectedTool || "inspect"; brushSize = settings.brushSize || 2;
   randomDisastersEnabled = settings.randomDisastersEnabled ?? randomDisastersEnabled; disasterFrequency = disasterIntervals[settings.disasterFrequency] ? settings.disasterFrequency : disasterFrequency;
-  normalizeWorldData(save.version || 1); selectedKingdomId = null; selectedTradeRouteId = null; setRunning(false, false); lastAutoSaveYear = year;
+  normalizeWorldData(save.version || 1); selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; setRunning(false, false); lastAutoSaveYear = year;
   document.getElementById("worldName").textContent = cleanText(save.worldName || save.meta?.worldName) || "无名世界";
   document.querySelectorAll(".speed-btn").forEach(b => b.classList.toggle("active", Number(b.dataset.speed) === speed));
   document.querySelectorAll(".tool").forEach(b => b.classList.toggle("active", b.dataset.tool === selectedTool));
@@ -1981,6 +2196,13 @@ document.getElementById("kingdomList").addEventListener("click", e => {
 });
 document.getElementById("tradeList").addEventListener("click", e => {
   const item = e.target.closest("[data-trade-route]"); if (item) inspectTradeRoute(Number(item.dataset.tradeRoute));
+});
+document.getElementById("armyList").addEventListener("click", e => {
+  const item = e.target.closest("[data-army]"); if (item) inspectArmy(Number(item.dataset.army));
+});
+document.getElementById("diplomacyList").addEventListener("click", e => {
+  const button = e.target.closest("[data-diplomacy-action]"); if (!button) return;
+  interveneDiplomacy(Number(button.dataset.kingdomA), Number(button.dataset.kingdomB), button.dataset.diplomacyAction);
 });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 canvas.addEventListener("mousedown", e => {

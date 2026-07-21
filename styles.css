@@ -75,11 +75,14 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .kingdom-item b { display: block; margin-bottom: 2px; font-size: 12px; }
 .kingdom-item span { color: var(--muted); }
 .resource-line { display: flex; gap: 9px; margin-top: 5px; color: #d9c58a !important; font-size: 10px; }
-.relation-item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 5px; margin-bottom: 5px; padding: 6px 7px; border-radius: 3px; background: #171a13; font-size: 10px; }
+.relation-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px; margin-bottom: 5px; padding: 6px 7px; border-radius: 3px; background: #171a13; font-size: 10px; }
 .relation-item b { font-size: 10px; font-weight: normal; }
 .relation-item.war { color: #ff9178; border: 1px solid #873b31; }
 .relation-item.alliance { color: #8ed9bc; border: 1px solid #376a58; }
 .relation-item.peace { color: #b7baa0; border: 1px solid transparent; }
+.relation-action { grid-column: 1 / -1; padding: 3px 6px; border: 1px solid #4b4634; border-radius: 3px; background: #24261c; color: #bdb697; font: inherit; cursor: pointer; }
+.relation-action:hover { border-color: #a28b50; color: #f1dfaa; }
+.relation-item.war .relation-action { border-color: #65443b; color: #eab1a4; }
 .relation-score { color: #868b73; }
 .ecology-list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .species-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 7px; border: 1px solid #414732; border-radius: 3px; background: #171a13; color: #c8cab1; font-size: 10px; }
@@ -127,6 +130,20 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .trade-route-item span { margin-top: 2px; color: var(--muted); font-size: 8px; }
 .trade-route-item.blockaded { border-color: #8b4438; background: #271815; color: #f09a82; }
 .trade-route-item.dormant { opacity: .58; }
+.army-list, .army-items { display: grid; gap: 5px; }
+.army-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.army-summary span { padding: 5px 2px; border: 1px solid #4a4333; border-radius: 3px; background: #191813; color: var(--muted); text-align: center; font-size: 8px; }
+.army-summary b { display: block; margin-top: 2px; color: var(--cream); font-size: 11px; }
+.army-item { width: 100%; padding: 6px 7px; border: 0; border-left: 3px solid; border-radius: 3px; background: #181a14; color: #d8d1b5; text-align: left; cursor: pointer; }
+.army-item:hover { background: #2d3024; }
+.army-item b, .army-item span, .army-item small { display: block; }
+.army-item b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.army-item span, .army-item small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.army-item > i { display: block; overflow: hidden; height: 3px; margin-top: 4px; border-radius: 2px; background: #332d22; }
+.army-item > i em { display: block; height: 100%; background: #cfaa55; }
+.army-item.battle, .army-item.siege { background: #281a16; }
+.army-item.retreat { opacity: .7; }
+.unit-line { margin-top: 8px; }
 .war-badge { display: inline-block; margin-left: 5px; padding: 1px 4px; border-radius: 3px; color: #ffd8cd; background: #8d3d31; font-size: 9px; }
 .event-log { font-size: 11px; color: #b7baa0; }
 .event { position: relative; margin: 0 0 9px 9px; padding-left: 12px; border-left: 1px solid #4f553d; line-height: 1.45; }
