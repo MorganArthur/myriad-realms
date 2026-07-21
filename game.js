@@ -33,7 +33,13 @@ const buildingDefs = {
   wall: { name: "城墙", icon: "▥", wood: 12, stone: 16, maxHp: 180, color: "#8c8d83", effect: "提高聚落防御与居民安全感" },
   market: { name: "市场", icon: "⚖", wood: 30, stone: 9, maxHp: 125, color: "#b67555", effect: "扩大商贸收益并吸纳商人" },
   dock: { name: "港口", icon: "⚓", wood: 36, stone: 9, maxHp: 135, color: "#587f8c", effect: "利用水域获得粮食与贸易加成" },
+  warehouse: { name: "仓库", icon: "▤", wood: 32, stone: 14, maxHp: 165, color: "#8b744d", effect: "提高聚落库存容量与商队装载量" },
   temple: { name: "神殿", icon: "✦", wood: 36, stone: 18, maxHp: 155, color: "#9b79a7", effect: "提高幸福、健康与灾后恢复" }
+};
+const tradeResourceDefs = {
+  food: { name: "粮食", icon: "🌾", color: "#d5b64d" },
+  wood: { name: "木材", icon: "🪵", color: "#739557" },
+  stone: { name: "石料", icon: "🪨", color: "#9a9d98" }
 };
 const professionDefs = {
   child: { name: "儿童", icon: "◌", color: "#d6c9a8" },
@@ -57,10 +63,10 @@ const disasterDefs = {
 };
 const disasterIntervals = { rare: [15, 24], normal: [8, 14], frequent: [4, 8] };
 
-let tiles = [], people = [], animals = [], villages = [], kingdoms = [], events = [], activeDisasters = [];
+let tiles = [], people = [], animals = [], villages = [], kingdoms = [], events = [], activeDisasters = [], tradeRoutes = [], caravans = [];
 let year = 1, ticks = 0, running = false, speed = 1, selectedTool = "inspect", brushSize = 2;
 let camera = { x: 0, y: 0, zoom: 1 }, dragging = false, lastMouse = null, painting = false;
-let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextStructureId = 1, nextDisasterId = 1, selectedKingdomId = null, activeSaveSlot = 1;
+let nextPersonId = 1, nextAnimalId = 1, nextVillageId = 1, nextStructureId = 1, nextTradeRouteId = 1, nextCaravanId = 1, nextDisasterId = 1, selectedKingdomId = null, selectedTradeRouteId = null, activeSaveSlot = 1;
 let autoSaveEnabled = true, lastAutoSaveYear = 0, autoSavePending = false, indexesReady = false, renderDirty = true;
 let randomDisastersEnabled = true, disasterFrequency = "normal", nextDisasterYear = 10;
 let worldIndex = createWorldIndex();
@@ -221,7 +227,7 @@ function generateWorld() {
     const biomass = type === "forest" ? rand(.72, 1) : type === "grass" ? rand(.5, .88) : type === "sand" ? rand(.05, .16) : 0;
     tiles.push({ type, fertility: type === "forest" ? 1 : type === "grass" ? .75 : .25, biomass, fire: 0, owner: -1 });
   }
-  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; year = 1; ticks = 0; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextDisasterId = 1; selectedKingdomId = null; indexesReady = false; lastAutoSaveYear = 1;
+  people = []; animals = []; villages = []; kingdoms = []; events = []; activeDisasters = []; tradeRoutes = []; caravans = []; year = 1; ticks = 0; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; indexesReady = false; lastAutoSaveYear = 1;
   camera = { x: 0, y: 0, zoom: 1 };
   const valid = habitableTileIndices();
   const anchors = [];
@@ -380,7 +386,7 @@ function buildRoadProject(village, segmentLimit = 3) {
 function seedVillageStructures(village, legacyCounts) {
   village.structures = [];
   addStructureEntity(village, "hall", { x: village.x, y: village.y });
-  for (const type of ["house", "farm", "lumber", "quarry", "barracks", "wall", "market", "dock", "temple"]) {
+  for (const type of ["house", "farm", "lumber", "quarry", "barracks", "wall", "market", "dock", "warehouse", "temple"]) {
     const amount = clamp(Math.floor(Number(legacyCounts?.[type]) || 0), 0, 60);
     for (let n = 0; n < amount; n++) if (!addStructureEntity(village, type)) break;
   }
@@ -400,7 +406,8 @@ function createVillage(founder) {
     id: nextVillageId++, x: founder.x, y: founder.y,
     name: `${["河湾", "绿林", "星丘", "橡木", "晨风", "望海"][randi(0,5)]}村`,
     kingdom: kingdom.id, level: 1, hp: 160,
-    buildings: { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, road: 2, wall: 0, market: 0, dock: 0, temple: 0 }, structures: [],
+    buildings: { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, road: 2, wall: 0, market: 0, dock: 0, warehouse: 0, temple: 0 }, structures: [],
+    inventory: { food: 45, wood: 24, stone: 12 }, demand: { food: 0, wood: 0, stone: 0 }, supply: { food: 0, wood: 0, stone: 0 }, prices: { food: 1, wood: 1, stone: 1 },
     buildCooldown: randi(8, 16), workforce: {}, averageHappiness: 60
   };
   villages.push(village); founder.village = village.id; seedVillageStructures(village, village.buildings);
@@ -441,11 +448,6 @@ function averageHappiness(citizens) {
   return total / citizens.length;
 }
 
-function alliedKingdomCount(kingdom) {
-  let allies = 0; for (const id in kingdom.relations) if (kingdom.relations[id].status === "alliance") allies++;
-  return allies;
-}
-
 function desiredProfessionCounts(village, adults) {
   const terrain = ownedTerrainCounts(village.kingdom, village), buildings = village.buildings, kingdom = getKingdom(village.kingdom);
   const infected = peopleOfVillage(village.id).filter(person => person.plague > 0).length;
@@ -455,7 +457,7 @@ function desiredProfessionCounts(village, adults) {
     builder: adults >= 3 ? Math.min(4, 1 + Math.floor(adults / 24) + ((village.structures || []).some(structure => structure.hp < structure.maxHp * .7) ? 1 : 0)) : 0,
     lumberjack: Math.min(4, buildings.lumber * 2 + (terrain.forest >= 8 ? 1 : 0)),
     miner: Math.min(4, buildings.quarry * 2 + (terrain.mountain >= 3 ? 1 : 0)),
-    merchant: adults >= 8 && ((buildings.market || 0) + (buildings.dock || 0) > 0) ? Math.min(4, 1 + buildings.market + buildings.dock + Math.floor(adults / 30)) : 0
+    merchant: adults >= 8 && ((buildings.market || 0) + (buildings.dock || 0) + (buildings.warehouse || 0) > 0) ? Math.min(4, 1 + buildings.market + buildings.dock + Math.floor(adults / 30)) : 0
   };
 }
 
@@ -551,6 +553,199 @@ function professionTileBias(person, x, y, tile, home) {
   return roadBonus;
 }
 
+function villageInventoryCapacity(village, resource) {
+  const warehouses = buildingCount(village, "warehouse"), buildings = village.structures?.length || 0;
+  const specialized = resource === "food" ? buildingCount(village, "farm") * 42 : resource === "wood" ? buildingCount(village, "lumber") * 32 : buildingCount(village, "quarry") * 30;
+  return 65 + village.level * 25 + warehouses * 135 + specialized + buildings * 2;
+}
+
+function recalculateVillageMarket(village) {
+  village.inventory ||= { food: 45, wood: 24, stone: 12 };
+  village.demand ||= { food: 0, wood: 0, stone: 0 }; village.supply ||= { food: 0, wood: 0, stone: 0 }; village.prices ||= { food: 1, wood: 1, stone: 1 };
+  const population = peopleOfVillage(village.id).length, structures = village.structures?.length || 0;
+  const targets = {
+    food: 28 + population * 4.2,
+    wood: 24 + structures * 3.2 + village.level * 12,
+    stone: 16 + buildingCount(village, "wall") * 8 + buildingCount(village, "temple") * 7 + village.level * 10
+  };
+  for (const resource of Object.keys(tradeResourceDefs)) {
+    const capacity = villageInventoryCapacity(village, resource);
+    village.inventory[resource] = clamp(Number(village.inventory[resource]) || 0, 0, capacity);
+    village.demand[resource] = Math.max(0, targets[resource] - village.inventory[resource]);
+    village.supply[resource] = Math.max(0, village.inventory[resource] - targets[resource] * 1.22);
+    village.prices[resource] = clamp(targets[resource] / Math.max(targets[resource] * .34, village.inventory[resource]), .45, 2.6);
+  }
+}
+
+function tradeFacilityScore(village) {
+  return buildingCount(village, "market") * 3 + buildingCount(village, "dock") * 2 + buildingCount(village, "warehouse") * 2;
+}
+
+function routeAnchor(village, mode) {
+  if (mode === "sea") {
+    const dock = (village.structures || []).find(structure => structure.type === "dock" && structure.hp > 0);
+    if (dock) return { x: Math.round(dock.x), y: Math.round(dock.y) };
+  }
+  return { x: Math.round(village.x), y: Math.round(village.y) };
+}
+
+function findTradePath(fromVillage, toVillage, mode = "land") {
+  const start = routeAnchor(fromVillage, mode), end = routeAnchor(toVillage, mode), startKey = `${start.x},${start.y}`, endKey = `${end.x},${end.y}`;
+  const open = [{ x: start.x, y: start.y, g: 0, f: Math.hypot(end.x - start.x, end.y - start.y) }], best = new Map([[startKey, 0]]), cameFrom = new Map();
+  const directions = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  for (let visited = 0; open.length && visited < 5200; visited++) {
+    let bestIndex = 0; for (let index = 1; index < open.length; index++) if (open[index].f < open[bestIndex].f) bestIndex = index;
+    const current = open.splice(bestIndex, 1)[0], currentKey = `${current.x},${current.y}`;
+    if (currentKey === endKey) {
+      const path = [{ x: end.x, y: end.y }]; let key = endKey;
+      while (key !== startKey) { key = cameFrom.get(key); if (!key) return null; const [x, y] = key.split(",").map(Number); path.push({ x, y }); }
+      return path.reverse();
+    }
+    for (const [dx, dy] of directions) {
+      const x = current.x + dx, y = current.y + dy, tile = tileAt(x, y), key = `${x},${y}`;
+      if (!tile) continue;
+      const endpoint = key === startKey || key === endKey;
+      const passable = mode === "sea" ? endpoint || ["water", "deep"].includes(tile.type) : isLand(tile) && tile.type !== "mountain" && !tile.fire;
+      if (!passable) continue;
+      const diagonal = dx && dy ? 1.42 : 1, roadDiscount = mode === "land" && structureAt(x, y, "road") ? .58 : 1;
+      const nextG = current.g + diagonal * roadDiscount;
+      if (nextG >= (best.get(key) ?? Infinity)) continue;
+      best.set(key, nextG); cameFrom.set(key, currentKey);
+      open.push({ x, y, g: nextG, f: nextG + Math.hypot(end.x - x, end.y - y) });
+    }
+  }
+  return null;
+}
+
+function tradeRouteBetween(aId, bId) {
+  return tradeRoutes.find(route => (route.fromVillage === aId && route.toVillage === bId) || (route.fromVillage === bId && route.toVillage === aId)) || null;
+}
+
+function routeStatus(route) {
+  const from = getVillage(route.fromVillage), to = getVillage(route.toVillage); if (!from || !to) return "broken";
+  if (!tradeFacilityScore(from) || !tradeFacilityScore(to)) return "dormant";
+  if (from.kingdom === to.kingdom) return "active";
+  const relation = relationBetween(from.kingdom, to.kingdom);
+  if (!relation || relation.status === "war") return "blockaded";
+  return "active";
+}
+
+function updateTradeRoutes() {
+  const validVillageIds = new Set(villages.map(village => village.id));
+  const removedRoutes = new Set(tradeRoutes.filter(route => !validVillageIds.has(route.fromVillage) || !validVillageIds.has(route.toVillage)).map(route => route.id));
+  tradeRoutes = tradeRoutes.filter(route => !removedRoutes.has(route.id));
+  if (removedRoutes.size) caravans = caravans.filter(caravan => !removedRoutes.has(caravan.routeId));
+  for (const route of tradeRoutes) {
+    const previous = route.status, next = routeStatus(route); route.status = next;
+    if (next === "blockaded" && previous !== "blockaded") { route.blockadedSince = Math.floor(year); addEvent(`战争封锁了${getVillage(route.fromVillage)?.name}与${getVillage(route.toVillage)?.name}之间的贸易路线。`); }
+    if (next === "active" && previous === "blockaded") { route.blockadedSince = null; addEvent(`${getVillage(route.fromVillage)?.name}与${getVillage(route.toVillage)?.name}之间的贸易恢复通行。`); }
+  }
+  if (tradeRoutes.length >= 24) return;
+  const eligible = villages.filter(village => tradeFacilityScore(village) > 0), candidates = [];
+  for (let i = 0; i < eligible.length; i++) for (let j = i + 1; j < eligible.length; j++) {
+    const a = eligible[i], b = eligible[j]; if (tradeRouteBetween(a.id, b.id)) continue;
+    const distance = Math.hypot(a.x - b.x, a.y - b.y); if (distance > 78) continue;
+    const relation = a.kingdom === b.kingdom ? { status: "internal", score: 30 } : relationBetween(a.kingdom, b.kingdom);
+    if (!relation || relation.status === "war") continue;
+    const maritime = buildingCount(a, "dock") > 0 && buildingCount(b, "dock") > 0 && distance > 18;
+    let complement = 0; for (const resource of Object.keys(tradeResourceDefs)) complement += Math.min(a.supply?.[resource] || 0, b.demand?.[resource] || 0) + Math.min(b.supply?.[resource] || 0, a.demand?.[resource] || 0);
+    const score = complement + tradeFacilityScore(a) * 5 + tradeFacilityScore(b) * 5 + (relation.status === "alliance" ? 24 : 0) + (maritime ? 16 : 0) - distance * .28;
+    candidates.push({ a, b, score, distance, maritime });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  const routeDegree = new Map(); for (const route of tradeRoutes) { routeDegree.set(route.fromVillage, (routeDegree.get(route.fromVillage) || 0) + 1); routeDegree.set(route.toVillage, (routeDegree.get(route.toVillage) || 0) + 1); }
+  for (const candidate of candidates) {
+    if (tradeRoutes.length >= 24) break;
+    if ((routeDegree.get(candidate.a.id) || 0) >= 3 || (routeDegree.get(candidate.b.id) || 0) >= 3) continue;
+    const bothDocks = buildingCount(candidate.a, "dock") > 0 && buildingCount(candidate.b, "dock") > 0;
+    let mode = candidate.maritime ? "sea" : "land", path = findTradePath(candidate.a, candidate.b, mode);
+    if (!path && mode === "sea") { mode = "land"; path = findTradePath(candidate.a, candidate.b, mode); }
+    if (!path && mode === "land" && bothDocks) { mode = "sea"; path = findTradePath(candidate.a, candidate.b, mode); }
+    if (!path || path.length < 2) continue;
+    tradeRoutes.push({ id: nextTradeRouteId++, fromVillage: candidate.a.id, toVillage: candidate.b.id, mode, status: "active", path, createdYear: Math.floor(year), deliveries: 0, delivered: 0, losses: 0, lastDispatchTick: ticks - randi(20, 70), lastDeliveryYear: null, blockadedSince: null });
+    routeDegree.set(candidate.a.id, (routeDegree.get(candidate.a.id) || 0) + 1); routeDegree.set(candidate.b.id, (routeDegree.get(candidate.b.id) || 0) + 1);
+    addEvent(`${candidate.a.name}与${candidate.b.name}开通了${mode === "sea" ? "海上" : "陆上"}贸易路线。`);
+  }
+}
+
+function bestShipment(from, to, maximum, requireSupply = true) {
+  let best = null;
+  for (const resource of Object.keys(tradeResourceDefs)) {
+    const available = requireSupply ? from.supply?.[resource] || 0 : from.inventory?.[resource] || 0;
+    const amount = Math.min(maximum, available, to.demand?.[resource] || maximum);
+    const score = amount * (1 + (to.prices?.[resource] || 1) - (from.prices?.[resource] || 1) * .35);
+    if (amount >= 2 && (!best || score > best.score)) best = { resource, amount: Math.max(2, Math.floor(amount * 10) / 10), score };
+  }
+  return best;
+}
+
+function dispatchCaravans() {
+  if (caravans.length >= 40) return;
+  for (const route of tradeRoutes) {
+    if (route.status !== "active" || ticks - (route.lastDispatchTick || 0) < 65 || caravans.some(caravan => caravan.routeId === route.id)) continue;
+    const a = getVillage(route.fromVillage), b = getVillage(route.toVillage); if (!a || !b) continue;
+    const maximum = 10 + (buildingCount(a, "warehouse") + buildingCount(b, "warehouse")) * 7 + (buildingCount(a, "market") + buildingCount(b, "market")) * 2;
+    const aToB = bestShipment(a, b, maximum), bToA = bestShipment(b, a, maximum);
+    let source = a, destination = b, shipment = aToB;
+    if (bToA && (!shipment || bToA.score > shipment.score)) { source = b; destination = a; shipment = bToA; }
+    if (!shipment) continue;
+    let payment = null;
+    if (source.kingdom !== destination.kingdom) {
+      payment = bestShipment(destination, source, shipment.amount);
+      if (!payment) continue;
+      shipment.amount = Math.min(shipment.amount, getKingdom(source.kingdom)?.resources?.[shipment.resource] || 0);
+      payment.amount = Math.min(payment.amount, getKingdom(destination.kingdom)?.resources?.[payment.resource] || 0);
+      if (shipment.amount < 2 || payment.amount < 2) continue;
+    }
+    source.inventory[shipment.resource] = Math.max(0, source.inventory[shipment.resource] - shipment.amount);
+    if (payment) destination.inventory[payment.resource] = Math.max(0, destination.inventory[payment.resource] - payment.amount);
+    if (source.kingdom !== destination.kingdom) {
+      getKingdom(source.kingdom).resources[shipment.resource] = Math.max(0, getKingdom(source.kingdom).resources[shipment.resource] - shipment.amount);
+      getKingdom(destination.kingdom).resources[payment.resource] = Math.max(0, getKingdom(destination.kingdom).resources[payment.resource] - payment.amount);
+    }
+    const path = route.fromVillage === source.id ? route.path : [...route.path].reverse(), start = path[0];
+    caravans.push({ id: nextCaravanId++, routeId: route.id, fromVillage: source.id, toVillage: destination.id, resource: shipment.resource, amount: shipment.amount, returnResource: payment?.resource || null, returnAmount: payment?.amount || 0, x: start.x, y: start.y, pathIndex: 0, segmentProgress: 0, hp: 100, status: "traveling", departedYear: year });
+    route.lastDispatchTick = ticks; recalculateVillageMarket(source); recalculateVillageMarket(destination);
+  }
+}
+
+function completeCaravan(caravan, route) {
+  const source = getVillage(caravan.fromVillage), destination = getVillage(caravan.toVillage); if (!source || !destination) return;
+  destination.inventory[caravan.resource] = Math.min(villageInventoryCapacity(destination, caravan.resource), destination.inventory[caravan.resource] + caravan.amount);
+  if (caravan.returnResource) source.inventory[caravan.returnResource] = Math.min(villageInventoryCapacity(source, caravan.returnResource), source.inventory[caravan.returnResource] + caravan.returnAmount);
+  if (source.kingdom !== destination.kingdom) {
+    getKingdom(destination.kingdom).resources[caravan.resource] = clamp(getKingdom(destination.kingdom).resources[caravan.resource] + caravan.amount, 0, 9999);
+    getKingdom(source.kingdom).resources[caravan.returnResource] = clamp(getKingdom(source.kingdom).resources[caravan.returnResource] + caravan.returnAmount, 0, 9999);
+    const relation = relationBetween(source.kingdom, destination.kingdom);
+    if (relation) { relation.score = clamp(relation.score + 1, -100, 100); getKingdom(destination.kingdom).relations[String(source.kingdom)].score = relation.score; }
+  }
+  route.deliveries++; route.delivered += caravan.amount + caravan.returnAmount; route.lastDeliveryYear = Math.floor(year);
+  if (route.deliveries === 1 || route.deliveries % 5 === 0) addEvent(`商队抵达${destination.name}，交付了${tradeResourceDefs[caravan.resource].name}${Math.floor(caravan.amount)}份。`);
+  recalculateVillageMarket(source); recalculateVillageMarket(destination);
+}
+
+function simulateCaravans() {
+  const survivors = [];
+  for (const caravan of caravans) {
+    const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), path = route ? (route.fromVillage === caravan.fromVillage ? route.path : [...route.path].reverse()) : null;
+    if (!route || !path?.length) continue;
+    if (route.status === "blockaded") caravan.hp -= .28;
+    const nearbyDisaster = activeDisasters.some(disaster => disasterFalloff(disaster, caravan.x, caravan.y));
+    if (nearbyDisaster) caravan.hp -= .16;
+    if (tileAt(Math.round(caravan.x), Math.round(caravan.y))?.fire) caravan.hp -= 1.8;
+    if (caravan.hp <= 0) { route.losses++; addEvent(`一支往返${getVillage(caravan.toVillage)?.name || "远方"}的商队失联，货物全部损失。`); continue; }
+    let travel = (route.mode === "sea" ? .3 : .22) * (route.status === "blockaded" ? .35 : 1);
+    while (travel > 0 && caravan.pathIndex < path.length - 1) {
+      const from = path[caravan.pathIndex], to = path[caravan.pathIndex + 1], segmentLength = Math.max(.1, Math.hypot(to.x - from.x, to.y - from.y));
+      const roadBoost = route.mode === "land" && structureAt(to.x, to.y, "road") ? 1.55 : 1, step = travel * roadBoost, remaining = segmentLength - caravan.segmentProgress;
+      if (step >= remaining) { caravan.pathIndex++; caravan.segmentProgress = 0; caravan.x = to.x; caravan.y = to.y; travel -= remaining / roadBoost; }
+      else { caravan.segmentProgress += step; const ratio = caravan.segmentProgress / segmentLength; caravan.x = from.x + (to.x - from.x) * ratio; caravan.y = from.y + (to.y - from.y) * ratio; travel = 0; }
+    }
+    if (caravan.pathIndex >= path.length - 1) completeCaravan(caravan, route); else survivors.push(caravan);
+  }
+  caravans = survivors;
+}
+
 function produceResources() {
   for (const kingdom of kingdoms) {
     const realmVillages = villagesOfKingdom(kingdom.id);
@@ -561,22 +756,29 @@ function produceResources() {
       const residents = peopleOfVillage(village.id), jobs = professionCounts(residents), terrain = ownedTerrainCounts(kingdom.id, village), b = village.buildings;
       const farmerOutput = jobs.farmer * (.55 + b.farm * .22), lumberOutput = jobs.lumberjack * (.48 + b.lumber * .24), minerOutput = jobs.miner * (.4 + b.quarry * .28);
       const dockOutput = b.dock * (.45 + residents.length * .018);
-      food += (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + dockOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food;
-      wood += (terrain.forest * .018 + lumberOutput + jobs.laborer * .018) * race.wood;
-      stone += (terrain.mountain * .014 + minerOutput) * race.stone;
+      const localFood = (terrain.grass * .025 + terrain.forest * .008 + farmerOutput + dockOutput + jobs.laborer * .045 + jobs.merchant * .07) * race.food;
+      const localWood = (terrain.forest * .018 + lumberOutput + jobs.laborer * .018) * race.wood;
+      const localStone = (terrain.mountain * .014 + minerOutput) * race.stone;
+      food += localFood; wood += localWood; stone += localStone;
+      village.inventory ||= { food: 45, wood: 24, stone: 12 };
+      village.inventory.food = clamp(village.inventory.food + localFood - residents.length * .16, 0, villageInventoryCapacity(village, "food"));
+      village.inventory.wood = clamp(village.inventory.wood + localWood, 0, villageInventoryCapacity(village, "wood"));
+      village.inventory.stone = clamp(village.inventory.stone + localStone, 0, villageInventoryCapacity(village, "stone"));
       village.buildCooldown -= 1 + jobs.builder * .42 + Math.min(.7, b.road * .08);
       village.hp = Math.min(villageMaxHp(village), village.hp + jobs.builder * .08 + b.temple * .02);
       const damaged = (village.structures || []).filter(structure => structure.hp < structure.maxHp).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
       for (let repair = 0; repair < Math.min(damaged.length, Math.max(1, jobs.builder)); repair++) damaged[repair].hp = Math.min(damaged[repair].maxHp, damaged[repair].hp + jobs.builder * .55 + b.temple * .12);
       performHealerWork(village, jobs.healer);
       village.workforce = jobs; village.averageHappiness = averageHappiness(residents);
+      recalculateVillageMarket(village);
       if (village.buildCooldown <= 0) attemptConstruction(village, peopleOfVillage(village.id).length);
     }
-    const allies = alliedKingdomCount(kingdom), merchants = realmVillages.reduce((sum, village) => sum + (village.workforce?.merchant || 0), 0);
+    const merchants = realmVillages.reduce((sum, village) => sum + (village.workforce?.merchant || 0), 0);
     const markets = realmVillages.reduce((sum, village) => sum + buildingCount(village, "market"), 0), docks = realmVillages.reduce((sum, village) => sum + buildingCount(village, "dock"), 0);
-    const tradeBonus = 1 + allies * .055 + merchants * .018 + markets * .035 + docks * .045, warCost = 1 + Math.min(1, kingdom.warWeariness / 100);
+    const tradeBonus = 1 + merchants * .006 + markets * .01 + docks * .012, warCost = 1 + Math.min(1, kingdom.warWeariness / 100);
     const farms = realmVillages.reduce((sum, village) => sum + (village.buildings?.farm || 0), 0);
-    const foodCapacity = 50 + realmPeople.length * 6 + realmVillages.length * 35 + farms * 45;
+    const warehouses = realmVillages.reduce((sum, village) => sum + buildingCount(village, "warehouse"), 0);
+    const foodCapacity = 50 + realmPeople.length * 6 + realmVillages.length * 35 + farms * 45 + warehouses * 120;
     const surplusSpoilage = Math.max(0, kingdom.resources.food - foodCapacity * .72) * .045;
     kingdom.resources.food = clamp(kingdom.resources.food + food * tradeBonus - realmPeople.length * .16 * warCost - surplusSpoilage, 0, foodCapacity);
     kingdom.resources.wood = clamp(kingdom.resources.wood + wood * tradeBonus, 0, 9999);
@@ -599,6 +801,7 @@ function attemptConstruction(village, population) {
   consider(terrain.mountain > 2 && b.quarry < Math.ceil(village.level / 2), "quarry");
   consider(population >= 6 && b.market < Math.ceil(village.level / 2), "market");
   consider(population >= 5 && b.dock < 1 && villageIsWaterfront(village), "dock");
+  consider(population >= 8 && b.warehouse < Math.ceil(village.level / 2), "warehouse");
   consider(population >= 9 && b.temple < Math.ceil(village.level / 2), "temple");
   consider(b.road < Math.min(10, 2 + Math.ceil((village.structures?.length || 1) / 2)), "road");
   consider(village.level >= 2 && b.wall < village.level * 2, "wall");
@@ -622,10 +825,12 @@ function simulationStep() {
   ticks++; year += .02; rebuildWorldIndexes();
   if (ticks % 25 === 0) triggerRandomDisaster();
   simulateDisasters();
+  simulateCaravans();
   regenerateBiomass(); if (ticks % 2 === 0) simulateAnimals(2);
   if (ticks % 10 === 0) produceResources();
+  if (ticks % 60 === 0) dispatchCaravans();
   if (ticks % 45 === 0) { updateMilitaryRoles(); updateProfessions(); }
-  if (ticks % 120 === 0) diplomacyStep();
+  if (ticks % 120 === 0) { diplomacyStep(); updateTradeRoutes(); }
   if (ticks % 250 === 0) attemptColonies();
   if (ticks % 300 === 0) maintainBiodiversity();
 
@@ -1252,9 +1457,17 @@ function needMeter(label, value) {
   return `<div class="need-row"><span>${label}</span><i><b style="width:${score}%"></b></i><em>${score}</em></div>`;
 }
 
+function inventoryHtml(village) {
+  return Object.entries(tradeResourceDefs).map(([resource, def]) => {
+    const stock = Math.floor(village.inventory?.[resource] || 0), capacity = Math.floor(villageInventoryCapacity(village, resource)), demand = Math.floor(village.demand?.[resource] || 0), supply = Math.floor(village.supply?.[resource] || 0), price = Number(village.prices?.[resource] || 1).toFixed(2);
+    return `<div class="inventory-row"><span>${def.icon} ${def.name}</span><b>${stock}/${capacity}</b><em>${supply ? `盈余 +${supply}` : demand ? `缺口 -${demand}` : "平衡"} · 价 ${price}</em></div>`;
+  }).join("");
+}
+
 function inspectAt(x, y) {
-  selectedKingdomId = null;
+  selectedKingdomId = null; selectedTradeRouteId = null;
   const person = people.find(p => Math.hypot(p.x - x, p.y - y) < 1.5);
+  const caravan = caravans.find(candidate => Math.hypot(candidate.x - x, candidate.y - y) < 1.35);
   const animal = animals.find(a => Math.hypot(a.x - x, a.y - y) < 1.5);
   let inspectedStructure = null, inspectedStructureVillage = null, inspectedDistance = Infinity;
   for (const candidateVillage of villages) for (const structure of candidateVillage.structures || []) {
@@ -1268,6 +1481,9 @@ function inspectAt(x, y) {
     const k = getKingdom(person.kingdom), v = getVillage(person.village);
     const race = raceDefs[person.race] || raceDefs.human, profession = professionDefs[person.role === "soldier" ? "soldier" : person.profession] || professionDefs.laborer;
     box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${profession.icon} ${profession.name} #${person.id}</h4><div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div><div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
+  } else if (caravan) {
+    const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), source = getVillage(caravan.fromVillage), destination = getVillage(caravan.toVillage), cargo = tradeResourceDefs[caravan.resource], progress = route?.path?.length > 1 ? caravan.pathIndex / (route.path.length - 1) * 100 : 0;
+    box.innerHTML = `<h4>${route?.mode === "sea" ? "⛵" : "🐴"} 商队 #${caravan.id}</h4><div class="detail-row"><span>路线</span><b>${source?.name} → ${destination?.name}</b></div><div class="detail-row"><span>货物</span><b>${cargo?.icon} ${cargo?.name} ${Math.floor(caravan.amount)}</b></div><div class="detail-row"><span>交换货物</span><b>${caravan.returnResource ? `${tradeResourceDefs[caravan.returnResource].icon} ${tradeResourceDefs[caravan.returnResource].name} ${Math.floor(caravan.returnAmount)}` : "国内调拨"}</b></div><div class="detail-row"><span>状态</span><b>${route?.status === "blockaded" ? "突破封锁" : "运输中"}</b></div><div class="need-list">${needMeter("行程", progress)}${needMeter("商队安全", caravan.hp)}</div>`;
   } else if (animal) {
     const def = animalDefs[animal.species];
     box.innerHTML = `<h4>${def.icon} ${def.name} #${animal.id}</h4><div class="detail-row"><span>年龄</span><b>${animal.age.toFixed(1)} 岁</b></div><div class="detail-row"><span>生命</span><b>${Math.max(0, Math.floor(animal.health))}</b></div><div class="detail-row"><span>饱食度</span><b>${Math.floor(animal.hunger)}%</b></div><div class="detail-row"><span>食性</span><b>${def.diet === "herbivore" ? "草食" : "捕食"}</b></div>`;
@@ -1275,8 +1491,8 @@ function inspectAt(x, y) {
     const def = buildingDefs[inspectedStructure.type], kingdom = getKingdom(inspectedStructureVillage.kingdom), integrity = inspectedStructure.hp / inspectedStructure.maxHp * 100;
     box.innerHTML = `<h4>${def.icon} ${def.name} #${inspectedStructure.id}</h4><div class="detail-row"><span>所属聚落</span><b>${inspectedStructureVillage.name}</b></div><div class="detail-row"><span>所属王国</span><b>${kingdom?.name || "无主"}</b></div><div class="detail-row"><span>建造纪元</span><b>${inspectedStructure.builtYear}</b></div><div class="detail-row"><span>坐标</span><b>${inspectedStructure.x}, ${inspectedStructure.y}</b></div><div class="need-list">${needMeter("建筑耐久", integrity)}</div><p class="muted">${def.effect}</p>`;
   } else if (village) {
-    const k = getKingdom(village.kingdom), pop = peopleOfVillage(village.id).length, b = village.buildings;
-    box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(village.averageHappiness || 0)}</b></div><div class="detail-row"><span>防御 / 规模</span><b>${Math.round(village.hp)} / ${villageMaxHp(village)} · ${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="building-grid">${Object.entries(buildingDefs).filter(([key]) => (b[key] || 0) > 0).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div><h3>劳动力</h3><div class="profession-list">${workforceHtml(village.workforce || {})}</div>`;
+    const k = getKingdom(village.kingdom), pop = peopleOfVillage(village.id).length, b = village.buildings, routes = tradeRoutes.filter(route => route.fromVillage === village.id || route.toVillage === village.id);
+    box.innerHTML = `<h4>🏠 ${village.name}</h4><div class="detail-row"><span>王国</span><b>${k?.name}</b></div><div class="detail-row"><span>人口容量</span><b>${pop} / ${villageCapacity(village)}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(village.averageHappiness || 0)}</b></div><div class="detail-row"><span>防御 / 规模</span><b>${Math.round(village.hp)} / ${villageMaxHp(village)} · ${["营地", "村落", "城镇"][village.level - 1]}</b></div><div class="detail-row"><span>贸易路线</span><b>${routes.length} 条</b></div><div class="inventory-list">${inventoryHtml(village)}</div><div class="building-grid">${Object.entries(buildingDefs).filter(([key]) => (b[key] || 0) > 0).map(([key, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${b[key] || 0}</span>`).join("")}</div><h3>劳动力</h3><div class="profession-list">${workforceHtml(village.workforce || {})}</div>`;
   } else {
     const t = tileAt(x, y), labels = { deep:"深海",water:"浅海",sand:"沙滩",grass:"草原",forest:"森林",mountain:"山地",ash:"焦土" };
     box.innerHTML = `<h4>▦ ${labels[t?.type] || "世界之外"}</h4><div class="detail-row"><span>坐标</span><b>${x}, ${y}</b></div><div class="detail-row"><span>肥沃度</span><b>${Math.round((t?.fertility || 0) * 100)}%</b></div><div class="detail-row"><span>植被量</span><b>${Math.round((t?.biomass || 0) * 100)}%</b></div>`;
@@ -1285,7 +1501,7 @@ function inspectAt(x, y) {
 
 function inspectKingdom(kingdomId) {
   const kingdom = getKingdom(kingdomId); if (!kingdom) return;
-  selectedKingdomId = kingdomId;
+  selectedKingdomId = kingdomId; selectedTradeRouteId = null;
   const box = document.getElementById("selectionCard"), citizens = peopleOfKingdom(kingdomId), realmVillages = villagesOfKingdom(kingdomId), race = raceDefs[kingdom.race] || raceDefs.human;
   const raceCounts = Object.fromEntries(Object.keys(raceDefs).map(key => [key, 0]));
   let soldiers = 0;
@@ -1299,6 +1515,15 @@ function inspectKingdom(kingdomId) {
   const relations = Object.entries(kingdom.relations || {}).map(([id, r]) => `${getKingdom(Number(id))?.name || "未知"}：${statusLabels[r.status]}`).join(" · ") || "尚无外交关系";
   box.classList.remove("empty");
   box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>主体种族</span><b>${race.name}</b></div><div class="detail-row"><span>人口 / 军队</span><b>${citizens.length} / ${soldiers}</b></div><div class="detail-row"><span>平均幸福</span><b>${Math.round(happiness)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
+}
+
+function inspectTradeRoute(routeId) {
+  const route = tradeRoutes.find(candidate => candidate.id === routeId); if (!route) { selectedTradeRouteId = null; return; }
+  selectedKingdomId = null; selectedTradeRouteId = routeId;
+  const from = getVillage(route.fromVillage), to = getVillage(route.toVillage), inTransit = caravans.find(caravan => caravan.routeId === route.id), box = document.getElementById("selectionCard");
+  const status = route.status === "active" ? "畅通" : route.status === "blockaded" ? "战争封锁" : "设施中断";
+  box.classList.remove("empty");
+  box.innerHTML = `<h4>${route.mode === "sea" ? "⚓" : "═"} 贸易路线 #${route.id}</h4><div class="detail-row"><span>起讫</span><b>${from?.name} ↔ ${to?.name}</b></div><div class="detail-row"><span>运输方式</span><b>${route.mode === "sea" ? "海运" : "陆运"}</b></div><div class="detail-row"><span>路线状态</span><b>${status}</b></div><div class="detail-row"><span>交付次数</span><b>${route.deliveries || 0}</b></div><div class="detail-row"><span>累计货运</span><b>${Math.floor(route.delivered || 0)}</b></div><div class="detail-row"><span>损失商队</span><b>${route.losses || 0}</b></div><div class="detail-row"><span>在途货物</span><b>${inTransit ? `${tradeResourceDefs[inTransit.resource].icon} ${Math.floor(inTransit.amount)}` : "暂无"}</b></div>`;
 }
 
 function resizeCanvas() {
@@ -1315,6 +1540,33 @@ function viewMetrics() {
 function screenToGrid(clientX, clientY) {
   const rect = canvas.getBoundingClientRect(), m = viewMetrics();
   return { x: (clientX - rect.left - m.ox) / m.size, y: (clientY - rect.top - m.oy) / m.size };
+}
+
+function renderTradeRoutes(m) {
+  for (const route of tradeRoutes) {
+    if (!route.path?.length) continue;
+    ctx.save(); ctx.globalAlpha = route.status === "active" ? .42 : route.status === "blockaded" ? .68 : .18;
+    ctx.strokeStyle = route.status === "blockaded" ? "#d76550" : route.mode === "sea" ? "#62b9d4" : "#d3ad62";
+    ctx.lineWidth = Math.max(1, m.size * (route.status === "blockaded" ? .24 : .16)); ctx.setLineDash(route.status === "active" ? [] : [Math.max(3, m.size), Math.max(2, m.size * .7)]);
+    ctx.beginPath();
+    for (let index = 0; index < route.path.length; index++) {
+      const point = route.path[index], sx = m.ox + (point.x + .5) * m.size, sy = m.oy + (point.y + .5) * m.size;
+      if (!index) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+}
+
+function renderCaravans(m) {
+  for (const caravan of caravans) {
+    const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), sx = m.ox + (caravan.x + .5) * m.size, sy = m.oy + (caravan.y + .5) * m.size;
+    if (!route || sx < -10 || sy < -10 || sx > m.width + 10 || sy > m.height + 10) continue;
+    const size = clamp(m.size * .46, 2.2, 5.5), def = tradeResourceDefs[caravan.resource];
+    ctx.save(); ctx.fillStyle = caravan.hp < 35 ? "#d85d49" : route.mode === "sea" ? "#d7e3d8" : "#4c3325"; ctx.strokeStyle = def?.color || "#e6cc86"; ctx.lineWidth = Math.max(1, m.size * .16);
+    if (route.mode === "sea") { ctx.translate(sx, sy); ctx.rotate(Math.PI / 4); ctx.fillRect(-size, -size, size * 2, size * 2); ctx.strokeRect(-size, -size, size * 2, size * 2); }
+    else { ctx.fillRect(sx - size, sy - size * .72, size * 2, size * 1.44); ctx.strokeRect(sx - size, sy - size * .72, size * 2, size * 1.44); }
+    ctx.restore();
+  }
 }
 
 function renderStructures(m) {
@@ -1338,6 +1590,9 @@ function renderStructures(m) {
     } else if (structure.type === "market") {
       ctx.fillRect(sx - size * .55, sy - size * .15, size * 1.1, size * .65); ctx.fillStyle = getKingdom(village.kingdom)?.color || "#d5c18a";
       ctx.beginPath(); ctx.moveTo(sx - size * .65, sy - size * .12); ctx.lineTo(sx, sy - size * .68); ctx.lineTo(sx + size * .65, sy - size * .12); ctx.closePath(); ctx.fill();
+    } else if (structure.type === "warehouse") {
+      ctx.fillRect(sx - size * .58, sy - size * .48, size * 1.16, size * .96); ctx.strokeRect(sx - size * .58, sy - size * .48, size * 1.16, size * .96);
+      ctx.strokeStyle = "#d3bb82"; ctx.beginPath(); ctx.moveTo(sx - size * .5, sy - size * .12); ctx.lineTo(sx + size * .5, sy - size * .12); ctx.moveTo(sx, sy - size * .4); ctx.lineTo(sx, sy + size * .4); ctx.stroke();
     } else if (structure.type === "temple") {
       ctx.fillRect(sx - size * .4, sy - size * .15, size * .8, size * .65); ctx.beginPath(); ctx.moveTo(sx - size * .55, sy - size * .15); ctx.lineTo(sx, sy - size * .75); ctx.lineTo(sx + size * .55, sy - size * .15); ctx.closePath(); ctx.fill();
       ctx.fillStyle = "#eadb91"; ctx.fillRect(sx - size * .07, sy - size * .68, size * .14, size * .25);
@@ -1370,6 +1625,7 @@ function render() {
     if (isLand(t) && (t.biomass || 0) < .18) { ctx.fillStyle = "#6d593724"; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
     if (m.size > 7 && t.type === "forest" && (x * 7 + y * 11) % 4 === 0 && t.biomass > .25) { ctx.fillStyle = "#234825"; ctx.fillRect(sx + m.size * .35, sy + m.size * .15, Math.max(1,m.size*.35), Math.max(1,m.size*.55 * t.biomass)); }
   }
+  renderTradeRoutes(m);
   renderStructures(m);
   renderDisasters(m);
   for (const animal of animals) {
@@ -1390,6 +1646,7 @@ function render() {
     if (v.hp < maxHp * .9) { ctx.fillStyle = "#351a17"; ctx.fillRect(sx - m.size, sy + m.size, m.size * 2, Math.max(2, m.size * .2)); ctx.fillStyle = "#d65a43"; ctx.fillRect(sx - m.size, sy + m.size, m.size * 2 * clamp(v.hp / maxHp, 0, 1), Math.max(2, m.size * .2)); }
     if (m.size > 5) { ctx.fillStyle = "#fff0c9"; ctx.font = `${Math.max(9, m.size * 1.25)}px Microsoft YaHei`; ctx.textAlign = "center"; ctx.fillText(v.name, sx, sy - m.size * 1.3); }
   }
+  renderCaravans(m);
   for (const p of people) {
     const sx = m.ox + (p.x + .5) * m.size, sy = m.oy + (p.y + .5) * m.size, k = getKingdom(p.kingdom);
     if (sx < -8 || sy < -8 || sx > m.width + 8 || sy > m.height + 8) continue;
@@ -1460,6 +1717,14 @@ function updateUI() {
   const structureCount = Object.values(worldBuildings).reduce((sum, count) => sum + count, 0);
   const infrastructure = Object.entries(buildingDefs).filter(([type]) => type !== "hall" && worldBuildings[type] > 0).map(([type, def]) => `<span class="building-chip">${def.icon} ${def.name} ×${worldBuildings[type]}</span>`).join("");
   document.getElementById("societyList").innerHTML = people.length ? `<div class="society-summary"><span>平均幸福<b>${Math.round(worldHappiness)}</b></span><span>饥荒王国<b>${famineCount}</b></span><span>实体建筑<b>${structureCount}</b></span></div><div class="profession-list">${workforceHtml(jobs)}</div><div class="building-grid infrastructure-grid">${infrastructure}</div>` : `<p class="muted">尚无社会分工</p>`;
+  const activeRoutes = tradeRoutes.filter(route => route.status === "active").length, blockedRoutes = tradeRoutes.filter(route => route.status === "blockaded").length, delivered = tradeRoutes.reduce((sum, route) => sum + (route.delivered || 0), 0);
+  const routeOrder = { blockaded: 0, active: 1, dormant: 2 };
+  const routeItems = [...tradeRoutes].sort((a, b) => (routeOrder[a.status] ?? 3) - (routeOrder[b.status] ?? 3)).slice(0, 7).map(route => {
+    const from = getVillage(route.fromVillage), to = getVillage(route.toVillage), inTransit = caravans.some(caravan => caravan.routeId === route.id);
+    const status = route.status === "blockaded" ? "封锁" : route.status === "active" ? (inTransit ? "运输中" : "畅通") : "中断";
+    return `<button class="trade-route-item ${route.status}" data-trade-route="${route.id}"><b>${route.mode === "sea" ? "⚓" : "═"} ${from?.name || "失落聚落"} ↔ ${to?.name || "失落聚落"}</b><span>${status} · ${route.deliveries || 0} 次交付 · 货运 ${Math.floor(route.delivered || 0)}</span></button>`;
+  }).join("");
+  document.getElementById("tradeList").innerHTML = tradeRoutes.length ? `<div class="trade-summary"><span>畅通<b>${activeRoutes}</b></span><span>商队<b>${caravans.length}</b></span><span>封锁<b>${blockedRoutes}</b></span><span>累计货运<b>${Math.floor(delivered)}</b></span></div><div class="trade-routes">${routeItems}</div>` : `<p class="muted">市场和仓库发展后将建立贸易路线</p>`;
   document.getElementById("disasterList").innerHTML = activeDisasters.length ? activeDisasters.map(disaster => {
     const def = disasterDefs[disaster.type], progress = clamp(disaster.duration / Math.max(1, disaster.maxDuration) * 100, 0, 100);
     return `<div class="disaster-item ${disaster.type}"><div><b>${def.icon} ${def.name}</b><span>${disasterLocation(disaster)} · 约 ${(disaster.duration * .02).toFixed(1)} 纪元</span></div><i style="width:${progress}%"></i></div>`;
@@ -1474,6 +1739,7 @@ function updateUI() {
   const sortedRelations = relationPairs.sort((a, b) => relationOrder[a.status] - relationOrder[b.status]);
   document.getElementById("diplomacyList").innerHTML = sortedRelations.length ? sortedRelations.map(r => `<div class="relation-item ${r.status}"><b>${r.a.name} ↔ ${r.b.name}</b><span>${statusLabels[r.status]} <i class="relation-score">${r.score}</i></span></div>`).join("") : `<p class="muted">尚未建立国家关系</p>`;
   if (selectedKingdomId !== null) inspectKingdom(selectedKingdomId);
+  if (selectedTradeRouteId !== null) inspectTradeRoute(selectedTradeRouteId);
 }
 
 function showToast(msg) { const el = document.getElementById("toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => el.classList.remove("show"), 1700); }
@@ -1490,10 +1756,10 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 6, savedAt: new Date().toISOString(),
-    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount },
+    version: 7, savedAt: new Date().toISOString(),
+    meta: { worldName, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length },
     worldName, year, ticks, tiles: tiles.map(t => [t.type, round3(t.fertility), round3(t.biomass), t.fire || 0, t.owner ?? -1]),
-    people, animals, villages, kingdoms, events, activeDisasters, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextDisasterId, nextDisasterYear,
+    people, animals, villages, kingdoms, events, activeDisasters, tradeRoutes, caravans, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextDisasterId, nextDisasterYear,
     settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency }
   };
 }
@@ -1519,6 +1785,7 @@ function scheduleAutoSave() {
 
 function normalizeWorldData(sourceVersion = 1) {
   nextStructureId = Math.max(1, Number(nextStructureId) || 1);
+  nextTradeRouteId = Math.max(1, Number(nextTradeRouteId) || 1); nextCaravanId = Math.max(1, Number(nextCaravanId) || 1);
   const usedStructureIds = new Set();
   for (const tile of tiles) { tile.biomass ??= tile.type === "forest" ? .8 : tile.type === "grass" ? .6 : tile.type === "sand" ? .1 : 0; }
   for (const kingdom of kingdoms) kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4];
@@ -1541,7 +1808,7 @@ function normalizeWorldData(sourceVersion = 1) {
   }
   for (const village of villages) {
     village.hp ??= 160; village.buildCooldown ??= randi(6, 12);
-    const legacyCounts = { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, road: 0, wall: 0, market: 0, dock: 0, temple: 0, ...(village.buildings || {}) };
+    const legacyCounts = { hall: 1, house: 2, farm: 1, lumber: 0, quarry: 0, barracks: 0, road: 0, wall: 0, market: 0, dock: 0, warehouse: 0, temple: 0, ...(village.buildings || {}) };
     if (sourceVersion < 6 || !Array.isArray(village.structures) || !village.structures.length) seedVillageStructures(village, legacyCounts);
     else {
       village.structures = village.structures.filter(structure => structure && buildingDefs[structure.type]).map(structure => {
@@ -1554,7 +1821,13 @@ function normalizeWorldData(sourceVersion = 1) {
       if (!village.structures.some(structure => structure.type === "hall")) addStructureEntity(village, "hall", { x: village.x, y: village.y });
       syncBuildingCounts(village);
     }
+    if (!village.inventory || sourceVersion < 7) {
+      const realm = getKingdom(village.kingdom), realmVillageCount = Math.max(1, villages.filter(candidate => candidate.kingdom === village.kingdom).length);
+      village.inventory = { food: (realm?.resources.food || 70) / realmVillageCount * .55, wood: (realm?.resources.wood || 45) / realmVillageCount * .55, stone: (realm?.resources.stone || 18) / realmVillageCount * .55 };
+    }
+    village.demand = { food: 0, wood: 0, stone: 0, ...(village.demand || {}) }; village.supply = { food: 0, wood: 0, stone: 0, ...(village.supply || {}) }; village.prices = { food: 1, wood: 1, stone: 1, ...(village.prices || {}) };
     village.workforce = professionCounts(people.filter(person => !person.dead && person.village === village.id)); village.averageHappiness = Number(village.averageHappiness) || 60;
+    recalculateVillageMarket(village);
   }
   for (const kingdom of kingdoms) {
     kingdom.name = cleanText(kingdom.name) || "无名王国";
@@ -1567,10 +1840,28 @@ function normalizeWorldData(sourceVersion = 1) {
   for (let i = 0; i < kingdoms.length; i++) for (let j = i + 1; j < kingdoms.length; j++) {
     if (!relationBetween(kingdoms[i].id, kingdoms[j].id)) setRelation(kingdoms[i].id, kingdoms[j].id, "peace", randi(-20, 25), true);
   }
+  const usedRouteIds = new Set();
+  tradeRoutes = (Array.isArray(tradeRoutes) ? tradeRoutes : []).filter(route => route && getVillage(route.fromVillage) && getVillage(route.toVillage) && route.fromVillage !== route.toVillage).slice(0, 24).map(route => {
+    const savedId = Number(route.id); let id = Number.isFinite(savedId) && savedId > 0 && !usedRouteIds.has(savedId) ? savedId : nextTradeRouteId++;
+    usedRouteIds.add(id); nextTradeRouteId = Math.max(nextTradeRouteId, id + 1);
+    const from = getVillage(route.fromVillage), to = getVillage(route.toVillage), mode = route.mode === "sea" && buildingCount(from, "dock") && buildingCount(to, "dock") ? "sea" : "land";
+    let path = route.mode === mode && Array.isArray(route.path) ? route.path.filter(point => point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))).map(point => ({ x: clamp(Math.round(Number(point.x)), 0, MAP_W - 1), y: clamp(Math.round(Number(point.y)), 0, MAP_H - 1) })) : [];
+    if (path.length < 2) path = findTradePath(from, to, mode) || [];
+    return { ...route, id, mode, path, status: "active", createdYear: Math.max(1, Number(route.createdYear) || Math.floor(year)), deliveries: Math.max(0, Number(route.deliveries) || 0), delivered: Math.max(0, Number(route.delivered) || 0), losses: Math.max(0, Number(route.losses) || 0), lastDispatchTick: Number(route.lastDispatchTick) || ticks, lastDeliveryYear: route.lastDeliveryYear ? Number(route.lastDeliveryYear) : null, blockadedSince: route.blockadedSince ? Number(route.blockadedSince) : null };
+  }).filter(route => route.path.length >= 2);
+  for (const route of tradeRoutes) route.status = routeStatus(route);
+  const routeIds = new Set(tradeRoutes.map(route => route.id)), usedCaravanIds = new Set();
+  caravans = (Array.isArray(caravans) ? caravans : []).filter(caravan => caravan && routeIds.has(caravan.routeId) && tradeResourceDefs[caravan.resource]).slice(0, 40).map(caravan => {
+    const route = tradeRoutes.find(candidate => candidate.id === caravan.routeId), savedId = Number(caravan.id);
+    let id = Number.isFinite(savedId) && savedId > 0 && !usedCaravanIds.has(savedId) ? savedId : nextCaravanId++;
+    usedCaravanIds.add(id); nextCaravanId = Math.max(nextCaravanId, id + 1);
+    return { ...caravan, id, fromVillage: getVillage(caravan.fromVillage) ? caravan.fromVillage : route.fromVillage, toVillage: getVillage(caravan.toVillage) ? caravan.toVillage : route.toVillage, resource: caravan.resource, amount: Math.max(.1, Number(caravan.amount) || 1), returnResource: tradeResourceDefs[caravan.returnResource] ? caravan.returnResource : null, returnAmount: Math.max(0, Number(caravan.returnAmount) || 0), x: clamp(Number(caravan.x) || route.path[0].x, 0, MAP_W - 1), y: clamp(Number(caravan.y) || route.path[0].y, 0, MAP_H - 1), pathIndex: clamp(Math.floor(Number(caravan.pathIndex) || 0), 0, route.path.length - 1), segmentProgress: Math.max(0, Number(caravan.segmentProgress) || 0), hp: clamp(Number(caravan.hp) || 100, 1, 100), status: "traveling", departedYear: Number(caravan.departedYear) || year };
+  });
   nextPersonId ||= Math.max(0, ...people.map(p => p.id)) + 1;
   nextAnimalId ||= Math.max(0, ...animals.map(a => a.id)) + 1;
   nextVillageId ||= Math.max(0, ...villages.map(v => v.id)) + 1;
   nextStructureId = Math.max(nextStructureId, 1, ...villages.flatMap(village => village.structures || []).map(structure => structure.id + 1));
+  nextTradeRouteId = Math.max(nextTradeRouteId, 1, ...tradeRoutes.map(route => route.id + 1)); nextCaravanId = Math.max(nextCaravanId, 1, ...caravans.map(caravan => caravan.id + 1));
   nextDisasterId = Math.max(1, Number(nextDisasterId) || 1);
   activeDisasters = activeDisasters.filter(disaster => disaster && disasterDefs[disaster.type] && Number.isFinite(Number(disaster.x)) && Number.isFinite(Number(disaster.y))).slice(0, 12).map(disaster => {
     const def = disasterDefs[disaster.type], intensity = clamp(Number(disaster.intensity) || 2, 1, 6);
@@ -1595,12 +1886,12 @@ function restoreWorld(save, slot = activeSaveSlot) {
   if (!save || !Array.isArray(save.tiles) || !Array.isArray(save.people) || !Array.isArray(save.villages) || !Array.isArray(save.kingdoms)) throw new Error("invalid save");
   if (save.tiles.length !== MAP_W * MAP_H || save.people.length > 5000 || (save.animals?.length || 0) > 5000) throw new Error("unsupported save size");
   tiles = save.tiles.map(t => Array.isArray(t) ? { type: t[0], fertility: t[1], biomass: t[2], fire: t[3], owner: t[4] } : t);
-  people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; indexesReady = false;
-  year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextStructureId = save.nextStructureId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
+  people = save.people; animals = save.animals || []; villages = save.villages; kingdoms = save.kingdoms; events = save.events || []; activeDisasters = Array.isArray(save.activeDisasters) ? save.activeDisasters : []; tradeRoutes = Array.isArray(save.tradeRoutes) ? save.tradeRoutes : []; caravans = Array.isArray(save.caravans) ? save.caravans : []; indexesReady = false;
+  year = Number(save.year) || 1; ticks = Number(save.ticks) || 0; nextPersonId = save.nextPersonId; nextAnimalId = save.nextAnimalId; nextVillageId = save.nextVillageId; nextStructureId = save.nextStructureId; nextTradeRouteId = save.nextTradeRouteId; nextCaravanId = save.nextCaravanId; nextDisasterId = save.nextDisasterId; nextDisasterYear = Number(save.nextDisasterYear);
   const settings = save.settings || {};
   camera = settings.camera || { x: 0, y: 0, zoom: 1 }; speed = settings.speed || 1; selectedTool = settings.selectedTool || "inspect"; brushSize = settings.brushSize || 2;
   randomDisastersEnabled = settings.randomDisastersEnabled ?? randomDisastersEnabled; disasterFrequency = disasterIntervals[settings.disasterFrequency] ? settings.disasterFrequency : disasterFrequency;
-  normalizeWorldData(save.version || 1); selectedKingdomId = null; setRunning(false, false); lastAutoSaveYear = year;
+  normalizeWorldData(save.version || 1); selectedKingdomId = null; selectedTradeRouteId = null; setRunning(false, false); lastAutoSaveYear = year;
   document.getElementById("worldName").textContent = cleanText(save.worldName || save.meta?.worldName) || "无名世界";
   document.querySelectorAll(".speed-btn").forEach(b => b.classList.toggle("active", Number(b.dataset.speed) === speed));
   document.querySelectorAll(".tool").forEach(b => b.classList.toggle("active", b.dataset.tool === selectedTool));
@@ -1687,6 +1978,9 @@ document.getElementById("importSaveInput").addEventListener("change", e => { imp
 window.addEventListener("keydown", e => { if (e.key === "Escape") closeArchive(); });
 document.getElementById("kingdomList").addEventListener("click", e => {
   const item = e.target.closest("[data-kingdom]"); if (item) inspectKingdom(Number(item.dataset.kingdom));
+});
+document.getElementById("tradeList").addEventListener("click", e => {
+  const item = e.target.closest("[data-trade-route]"); if (item) inspectTradeRoute(Number(item.dataset.tradeRoute));
 });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 canvas.addEventListener("mousedown", e => {

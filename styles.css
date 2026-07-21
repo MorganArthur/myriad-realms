@@ -111,6 +111,22 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .building-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
 .building-chip { padding: 5px; border: 1px solid #424733; border-radius: 3px; color: #c7c9af; background: #20241a; font-size: 10px; }
 .infrastructure-grid { margin-top: 6px; }
+.inventory-list { display: grid; gap: 4px; margin-top: 8px; }
+.inventory-row { display: grid; grid-template-columns: 1fr auto; gap: 3px 7px; padding: 5px 6px; border: 1px solid #414732; border-radius: 3px; background: #191c15; font-size: 9px; }
+.inventory-row span { color: #c9cbb2; }
+.inventory-row b { color: var(--cream); }
+.inventory-row em { grid-column: 1 / -1; color: var(--muted); font-style: normal; }
+.trade-list, .trade-routes { display: grid; gap: 5px; }
+.trade-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.trade-summary span { padding: 5px 2px; border: 1px solid #4b4933; border-radius: 3px; background: #181a13; color: var(--muted); text-align: center; font-size: 8px; }
+.trade-summary b { display: block; margin-top: 2px; color: var(--cream); font-size: 11px; }
+.trade-route-item { width: 100%; padding: 6px 7px; border: 1px solid #61563a; border-radius: 3px; background: #1b1b13; color: #d8cfac; text-align: left; cursor: pointer; }
+.trade-route-item:hover { background: #2d3021; }
+.trade-route-item b, .trade-route-item span { display: block; }
+.trade-route-item b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.trade-route-item span { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.trade-route-item.blockaded { border-color: #8b4438; background: #271815; color: #f09a82; }
+.trade-route-item.dormant { opacity: .58; }
 .war-badge { display: inline-block; margin-left: 5px; padding: 1px 4px; border-radius: 3px; color: #ffd8cd; background: #8d3d31; font-size: 9px; }
 .event-log { font-size: 11px; color: #b7baa0; }
 .event { position: relative; margin: 0 0 9px 9px; padding-left: 12px; border-left: 1px solid #4f553d; line-height: 1.45; }
