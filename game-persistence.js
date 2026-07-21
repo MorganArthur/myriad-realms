@@ -1,6 +1,6 @@
 "use strict";
 
-// 持久化层：v13 存档、旧版本迁移、槽位与导入导出。
+// 持久化层：v14 存档、旧版本迁移、槽位与导入导出。
 
 const saveKey = slot => `realm-save-v3-${slot}`;
 const round3 = value => Math.round((value || 0) * 1000) / 1000;
@@ -9,12 +9,12 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 13, savedAt: new Date().toISOString(),
-    meta: { worldName, seed: worldSeed, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length, technologyLevels: kingdoms.reduce((sum, kingdom) => sum + totalTechnologyLevel(kingdom), 0) },
+    version: 14, savedAt: new Date().toISOString(),
+    meta: { worldName, seed: worldSeed, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, heroes: heroes.filter(hero => hero.status === "active").length, worldEvents: worldEventState.history.length, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length, technologyLevels: kingdoms.reduce((sum, kingdom) => sum + totalTechnologyLevel(kingdom), 0) },
     worldName, worldSeed, year, ticks, tiles: tiles.map(t => [t.type, t.fertility, t.biomass, t.fire || 0, t.owner ?? -1, t.moisture, t.temperature]), climate,
-    people, animals, villages, kingdoms, events, chronicle, worldStats, worldProgress, activeDisasters, tradeRoutes, caravans, armies, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextDisasterId, nextDisasterYear,
+    people, animals, villages, kingdoms, events, chronicle, worldStats, worldProgress, activeDisasters, tradeRoutes, caravans, armies, heroes, worldEventState, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextHeroId, nextDisasterId, nextDisasterYear,
     randomState: getRandomState(),
-    settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency, worldSeed }
+    settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency, worldSeed, mapMode, audioEnabled }
   };
 }
 
@@ -44,7 +44,7 @@ function normalizeWorldData(sourceVersion = 1) {
   worldProgress.achievements = worldProgress.achievements && typeof worldProgress.achievements === "object" ? worldProgress.achievements : {};
   worldProgress.completedGoals = worldProgress.completedGoals && typeof worldProgress.completedGoals === "object" ? worldProgress.completedGoals : {};
   worldProgress.renown = Math.max(0, Number(worldProgress.renown) || 0);
-  chronicle = (Array.isArray(chronicle) && chronicle.length ? chronicle : events).filter(entry => entry && entry.text).slice(0, 240).map(entry => ({ year: Math.max(1, Number(entry.year) || 1), text: cleanText(entry.text), kind: ["event", "achievement", "goal"].includes(entry.kind) ? entry.kind : "event" }));
+  chronicle = (Array.isArray(chronicle) && chronicle.length ? chronicle : events).filter(entry => entry && entry.text).slice(0, 240).map(entry => ({ year: Math.max(1, Number(entry.year) || 1), text: cleanText(entry.text), kind: ["event", "achievement", "goal", "hero", "world-event"].includes(entry.kind) ? entry.kind : "event" }));
   nextStructureId = Math.max(1, Number(nextStructureId) || 1);
   nextTradeRouteId = Math.max(1, Number(nextTradeRouteId) || 1); nextCaravanId = Math.max(1, Number(nextCaravanId) || 1); nextArmyId = Math.max(1, Number(nextArmyId) || 1);
   const usedStructureIds = new Set();
@@ -98,9 +98,10 @@ function normalizeWorldData(sourceVersion = 1) {
       const realm = getKingdom(village.kingdom), realmVillageCount = Math.max(1, villages.filter(candidate => candidate.kingdom === village.kingdom).length);
       village.inventory = { food: (realm?.resources.food || 70) / realmVillageCount * .55, wood: (realm?.resources.wood || 45) / realmVillageCount * .55, stone: (realm?.resources.stone || 18) / realmVillageCount * .55 };
     }
+    const hasCompleteMarketSnapshot = sourceVersion >= 14 && village.demand && village.supply && village.prices && village.workforce;
     village.demand = { food: 0, wood: 0, stone: 0, ...(village.demand || {}) }; village.supply = { food: 0, wood: 0, stone: 0, ...(village.supply || {}) }; village.prices = { food: 1, wood: 1, stone: 1, ...(village.prices || {}) };
-    village.workforce = professionCounts(people.filter(person => !person.dead && person.village === village.id)); village.averageHappiness = Number(village.averageHappiness) || 60; village.unrest = clamp(Number.isFinite(Number(village.unrest)) ? Number(village.unrest) : 8, 0, 100);
-    recalculateVillageMarket(village);
+    village.workforce = hasCompleteMarketSnapshot ? village.workforce : professionCounts(people.filter(person => !person.dead && person.village === village.id)); village.averageHappiness = Number(village.averageHappiness) || 60; village.unrest = clamp(Number.isFinite(Number(village.unrest)) ? Number(village.unrest) : 8, 0, 100);
+    if (!hasCompleteMarketSnapshot) recalculateVillageMarket(village);
   }
   for (const kingdom of kingdoms) {
     kingdom.name = cleanText(kingdom.name) || "无名王国";
@@ -118,9 +119,10 @@ function normalizeWorldData(sourceVersion = 1) {
     kingdom.welfareCoverage = clamp(Number.isFinite(Number(kingdom.welfareCoverage)) ? Number(kingdom.welfareCoverage) : 1, 0, 1); kingdom.lastTaxRevenue = Math.max(0, Number(kingdom.lastTaxRevenue) || 0); kingdom.lastPolicyYear = Number(kingdom.lastPolicyYear) || Math.floor(year); kingdom.lastReformYear = Number(kingdom.lastReformYear) || 0; kingdom.policyLockedUntil = Number(kingdom.policyLockedUntil) || 0; kingdom.rebellionCooldownUntil = Number(kingdom.rebellionCooldownUntil) || 0;
   }
   for (const village of villages) village.name = cleanText(village.name) || "无名聚落";
-  for (const event of events) event.text = cleanText(event.text);
+  for (const event of events) { event.text = cleanText(event.text); event.kind = ["event", "achievement", "goal", "hero", "world-event"].includes(event.kind) ? event.kind : "event"; }
   for (let i = 0; i < kingdoms.length; i++) for (let j = i + 1; j < kingdoms.length; j++) {
     if (!relationBetween(kingdoms[i].id, kingdoms[j].id)) setRelation(kingdoms[i].id, kingdoms[j].id, "peace", randi(-20, 25), true);
+    else { normalizeDiplomaticRelation(relationBetween(kingdoms[i].id, kingdoms[j].id)); normalizeDiplomaticRelation(relationBetween(kingdoms[j].id, kingdoms[i].id)); }
   }
   const usedRouteIds = new Set();
   tradeRoutes = (Array.isArray(tradeRoutes) ? tradeRoutes : []).filter(route => route && getVillage(route.fromVillage) && getVillage(route.toVillage) && route.fromVillage !== route.toVillage).slice(0, 24).map(route => {
@@ -206,13 +208,18 @@ function restoreWorld(save, slot = activeSaveSlot) {
   const settings = save.settings || {};
   camera = settings.camera || { x: 0, y: 0, zoom: 1 }; speed = settings.speed || 1; selectedTool = settings.selectedTool || "inspect"; brushSize = settings.brushSize || 2;
   randomDisastersEnabled = settings.randomDisastersEnabled ?? randomDisastersEnabled; disasterFrequency = disasterIntervals[settings.disasterFrequency] ? settings.disasterFrequency : disasterFrequency;
-  normalizeWorldData(save.version || 1); selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; setRunning(false, false); lastAutoSaveYear = year;
+  normalizeExperienceState(save.heroes, save.nextHeroId, save.worldEventState); normalizeWorldData(save.version || 1);
+  if ((save.version || 1) < 14 && heroes.length === 0) heroStep(true);
+  // 迁移与完整性修复可能需要补默认值，但不应消耗存档时间线的随机序列。
+  if (save.randomState) restoreRandomState(save.randomState);
+  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null; setRunning(false, false); lastAutoSaveYear = year;
   document.getElementById("worldName").textContent = cleanText(save.worldName || save.meta?.worldName) || "无名世界";
   document.getElementById("worldSeedInput").value = worldSeed; document.getElementById("worldSeedStat").textContent = `种子 ${worldSeed}`;
   document.querySelectorAll(".speed-btn").forEach(b => b.classList.toggle("active", Number(b.dataset.speed) === speed));
   document.querySelectorAll(".tool").forEach(b => b.classList.toggle("active", b.dataset.tool === selectedTool));
   document.getElementById("brushSize").value = brushSize; document.getElementById("brushValue").textContent = brushSize;
   document.getElementById("randomDisasterToggle").checked = randomDisastersEnabled; document.getElementById("disasterFrequency").value = disasterFrequency;
+  audioEnabled = settings.audioEnabled ?? audioEnabled; setMapMode(settings.mapMode || mapMode); const audioButton = document.getElementById("audioBtn"); if (audioButton) audioButton.textContent = audioEnabled ? "🔊" : "🔇"; renderActiveWorldEvent();
   if (slot !== "auto") activeSaveSlot = Number(slot) || activeSaveSlot;
   updateUI(); render();
 }

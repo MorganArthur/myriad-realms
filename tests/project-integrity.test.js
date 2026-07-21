@@ -10,13 +10,15 @@ const game = fs.readFileSync(path.join(root, "game.js"), "utf8");
 const ui = fs.readFileSync(path.join(root, "game-ui.js"), "utf8");
 const persistence = fs.readFileSync(path.join(root, "game-persistence.js"), "utf8");
 const config = fs.readFileSync(path.join(root, "world-config.js"), "utf8");
-const app = [game, ui, persistence].join("\n");
+const experience = fs.readFileSync(path.join(root, "experience-system.js"), "utf8");
+const app = [game, ui, persistence, experience].join("\n");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 
 test("运行脚本按依赖顺序加载", () => {
   assert.ok(html.indexOf('src="engine-core.js"') >= 0);
   assert.ok(html.indexOf('src="world-config.js"') > html.indexOf('src="engine-core.js"'));
-  assert.ok(html.indexOf('src="game-ui.js"') > html.indexOf('src="world-config.js"'));
+  assert.ok(html.indexOf('src="experience-system.js"') > html.indexOf('src="world-config.js"'));
+  assert.ok(html.indexOf('src="game-ui.js"') > html.indexOf('src="experience-system.js"'));
   assert.ok(html.indexOf('src="game-persistence.js"') > html.indexOf('src="game-ui.js"'));
   assert.ok(html.indexOf('src="game.js"') > html.indexOf('src="game-persistence.js"'));
 });
@@ -29,10 +31,10 @@ test("代码引用的 DOM id 全部存在且页面 id 唯一", () => {
   assert.equal(declaredSet.size, declared.length);
 });
 
-test("新版档案包含文化历史、世界种子与随机状态", () => {
+test("新版档案包含体验历史、世界种子与随机状态", () => {
   const version = Number(persistence.match(/version:\s*(\d+),\s*savedAt/)?.[1]);
-  assert.ok(version >= 13);
-  for (const field of ["chronicle", "worldStats", "worldProgress", "culture", "technology", "worldSeed", "randomState"]) assert.match(app, new RegExp(`\\b${field}\\b`));
+  assert.ok(version >= 14);
+  for (const field of ["chronicle", "worldStats", "worldProgress", "culture", "technology", "heroes", "worldEventState", "worldSeed", "randomState"]) assert.match(app, new RegExp(`\\b${field}\\b`));
 });
 
 test("文化科技与六个核心模拟系统相连", () => {
@@ -55,10 +57,23 @@ test("模拟、视图、存档和静态规则保持独立模块边界", () => {
   assert.match(ui, /function render\(/);
   assert.match(persistence, /function buildSaveData\(/);
   assert.match(config, /globalThis\.RealmConfig/);
+  assert.match(experience, /function startTutorial\(/);
+  assert.match(experience, /function evaluateDiplomaticPair\(/);
 });
 
 test("正式运行时代码不绕过种子随机数", () => {
-  for (const [name, source] of Object.entries({ game, ui, persistence, config })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
+  for (const [name, source] of Object.entries({ game, ui, persistence, config, experience })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
+});
+
+test("教程、外交记忆、英雄、事件链、音效、地图模式与百科均已接入", () => {
+  for (const id of ["tutorialPanel", "worldEventModal", "heroList", "audioBtn", "mapModeSelect", "codexModal"]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(experience, /const tutorialSteps/);
+  assert.match(experience, /function recordDiplomaticMemory\(/);
+  assert.match(experience, /function promoteHero\(/);
+  assert.match(experience, /const worldEventChains/);
+  assert.match(experience, /function playExperienceSound\(/);
+  assert.match(experience, /function mapModeTileColor\(/);
+  assert.match(experience, /function renderCodex\(/);
 });
 
 test("视觉层保留工具分组、地图反馈与低动态适配", () => {

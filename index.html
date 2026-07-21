@@ -29,6 +29,11 @@
         <button class="speed-btn" data-speed="2">2×</button>
         <button class="speed-btn" data-speed="4">4×</button>
       </div>
+      <div class="experience-controls" aria-label="体验工具">
+        <button id="audioBtn" class="icon-btn" title="开启世界音效">🔇</button>
+        <button id="helpBtn" class="icon-btn" title="重开创世指引">?</button>
+        <button id="codexBtn" class="icon-btn codex-btn" title="打开世界百科">百科</button>
+      </div>
     </header>
 
     <section class="workspace">
@@ -90,6 +95,17 @@
 
       <section class="world-wrap">
         <canvas id="worldCanvas" width="960" height="640" aria-label="模拟世界地图"></canvas>
+        <div class="map-mode-control">
+          <label for="mapModeSelect">地图</label>
+          <select id="mapModeSelect">
+            <option value="natural">自然地貌</option>
+            <option value="political">政治疆域</option>
+            <option value="fertility">土地肥力</option>
+            <option value="population">人口密度</option>
+            <option value="diplomacy">外交关系</option>
+          </select>
+        </div>
+        <div id="mapLegend" class="map-legend" hidden></div>
         <div class="canvas-help">滚轮缩放 · 右键拖动画面 · 左键使用神力</div>
         <div id="toast" class="toast"></div>
       </section>
@@ -104,6 +120,10 @@
         <div id="goalList" class="goal-list"></div>
         <h3>文明成就</h3>
         <div id="achievementList" class="achievement-list"></div>
+        <h3>时代事件</h3>
+        <div id="worldEventSummary"><p class="muted">世界暂时平静</p></div>
+        <h3>英雄传说</h3>
+        <div id="heroList" class="hero-list"><p class="muted">英雄尚未在历史中崭露头角</p></div>
         <h3>世界统计</h3>
         <div id="worldStatsList" class="world-stats-list"></div>
         <h3>气候环境</h3>
@@ -152,8 +172,26 @@
       </div>
     </div>
   </section>
+  <aside id="tutorialPanel" class="tutorial-panel" aria-live="polite" hidden></aside>
+  <section id="worldEventModal" class="modal-backdrop world-event-backdrop" role="dialog" aria-modal="true" aria-label="世界事件抉择" hidden>
+    <div id="worldEventContent" class="world-event-modal"></div>
+  </section>
+  <section id="codexModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="codexTitle" hidden>
+    <div class="codex-modal">
+      <div class="modal-title"><div><h2 id="codexTitle">世界百科</h2><p>种族、生态、建筑、灾害与模拟规则</p></div><button id="closeCodexBtn" class="modal-close" aria-label="关闭百科">×</button></div>
+      <nav id="codexTabs" class="codex-tabs" aria-label="百科分类">
+        <button class="active" data-codex-tab="peoples">文明种族</button>
+        <button data-codex-tab="ecology">生态生物</button>
+        <button data-codex-tab="buildings">建筑设施</button>
+        <button data-codex-tab="disasters">天灾</button>
+        <button data-codex-tab="systems">系统规则</button>
+      </nav>
+      <div id="codexContent" class="codex-content"></div>
+    </div>
+  </section>
   <script src="engine-core.js"></script>
   <script src="world-config.js"></script>
+  <script src="experience-system.js"></script>
   <script src="game-ui.js"></script>
   <script src="game-persistence.js"></script>
   <script src="game.js"></script>

@@ -106,9 +106,9 @@
       simulation: { yearsPerStep: .02, populationCap: 800, adaptiveEcologyThreshold: 900, uiHeavyPopulationThreshold: 900 },
       cadence: { resources: 10, culture: 60, professions: 45, diplomacy: 120, colonies: 250, biodiversity: 300 },
       settlement: { baseCapacity: 8, peoplePerHouse: 7, initialFood: 70, initialWood: 45, initialStone: 18 },
-      citizens: { baseBirthChance: .0028, pioneerSettlementChance: .0011, foodDrain: .19, kingdomFoodUse: .16, localFoodUse: .16, starvationDamage: .7 },
+      citizens: { baseBirthChance: .0036, pioneerSettlementChance: .0011, foodDrain: .19, kingdomFoodUse: .16, localFoodUse: .16, starvationDamage: .7 },
       production: { farmerBase: .55, farmerPerFarm: .22, lumberBase: .48, lumberPerBuilding: .24, minerBase: .4, minerPerBuilding: .28, laborerFood: .045, merchantFood: .07 },
-      diplomacy: { relationRandomMin: -4, relationRandomMax: 5, borderDrift: -3, nearbyDrift: 0, distantDrift: 1, allianceThreshold: 52, warThreshold: -40, allianceBreakThreshold: 28, wearinessPerCycle: 7, forcedPeaceWeariness: 56 },
+      diplomacy: { relationRandomMin: -4, relationRandomMax: 5, borderDrift: -3, nearbyDrift: 0, distantDrift: 1, allianceThreshold: 52, warThreshold: -34, allianceBreakThreshold: 28, wearinessPerCycle: 7, forcedPeaceWeariness: 56 },
       targets: {
         year50PopulationMin: 25, year50PopulationMax: 90, populationOutlierRateMax: .2, extinctionRateMax: .1,
         fourKingdomSurvivalRateMin: .8, completeFoodWebRateMin: .75, dominantRaceShareMax: .65, famineRealmRateMax: .25,

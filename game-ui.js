@@ -44,7 +44,7 @@ function inventoryHtml(village) {
 
 function inspectAt(x, y) {
   selectedGrid = { x: Math.floor(x), y: Math.floor(y) };
-  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null;
+  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null;
   const person = people.find(p => Math.hypot(p.x - x, p.y - y) < 1.5);
   const caravan = caravans.find(candidate => Math.hypot(candidate.x - x, candidate.y - y) < 1.35);
   const animal = animals.find(a => Math.hypot(a.x - x, a.y - y) < 1.5);
@@ -59,10 +59,11 @@ function inspectAt(x, y) {
   if (person) {
     const k = getKingdom(person.kingdom), v = getVillage(person.village);
     const race = raceDefs[person.race] || raceDefs.human, profession = professionDefs[person.role === "soldier" ? "soldier" : person.profession] || professionDefs.laborer;
+    const hero = heroForPerson(person.id), heroLabel = hero ? `${heroArchetypes[hero.archetype].icon} ${hero.title}${hero.name}` : null;
     const unit = person.role === "soldier" ? unitDefs[person.unitType] || unitDefs.militia : null, army = unit ? armyOfSoldier(person.id) : null;
     const militaryRows = unit ? `<div class="detail-row"><span>军职 / 兵种</span><b>${person.isGeneral ? "★ 将领" : "士兵"} · ${unit.icon} ${unit.name}</b></div><div class="detail-row"><span>所属军团</span><b>${army?.name || "地方守军"}</b></div>${army ? `<div class="detail-row"><span>军团士气 / 补给</span><b>${Math.round(army.morale)} / ${Math.round(army.supply)}</b></div>` : ""}` : "";
     const socialClass = socialClassDefs[person.socialClass] || socialClassDefs.peasant;
-    box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${race.icon} ${unit ? `${unit.icon} ${unit.name}` : `${profession.icon} ${profession.name}`} #${person.id}</h4><div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>社会阶层</span><b>${socialClass.icon} ${socialClass.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div>${militaryRows}<div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
+    box.innerHTML = `<h4>${person.blessed ? "✨ " : ""}${person.plague > 0 ? "☣ " : ""}${heroLabel || `${race.icon} ${unit ? `${unit.icon} ${unit.name}` : `${profession.icon} ${profession.name}`} #${person.id}`}</h4>${hero ? `<div class="detail-row"><span>英雄等级 / 声望</span><b>${hero.level} / ${Math.floor(hero.renown)}</b></div>` : ""}<div class="detail-row"><span>年龄 / 种族</span><b>${Math.floor(person.age)} 岁 · ${race.name}</b></div><div class="detail-row"><span>社会阶层</span><b>${socialClass.icon} ${socialClass.name}</b></div><div class="detail-row"><span>生命 / 幸福</span><b>${Math.floor(person.health)} · ${Math.round(person.happiness)}</b></div><div class="detail-row"><span>健康</span><b>${person.plague > 0 ? "感染瘟疫" : "正常"}</b></div><div class="detail-row"><span>归属</span><b>${k?.name || "流浪者"}</b></div><div class="detail-row"><span>家园</span><b>${v?.name || "尚无家园"}</b></div>${militaryRows}<div class="need-list">${needMeter("营养", person.needs?.nutrition)}${needMeter("住所", person.needs?.shelter)}${needMeter("安全", person.needs?.safety)}${needMeter("健康", person.needs?.health)}</div>`;
   } else if (caravan) {
     const route = getTradeRoute(caravan.routeId), source = getVillage(caravan.fromVillage), destination = getVillage(caravan.toVillage), cargo = tradeResourceDefs[caravan.resource], progress = route?.path?.length > 1 ? caravan.pathIndex / (route.path.length - 1) * 100 : 0;
     box.innerHTML = `<h4>${route?.mode === "sea" ? "⛵" : "🐴"} 商队 #${caravan.id}</h4><div class="detail-row"><span>路线</span><b>${source?.name} → ${destination?.name}</b></div><div class="detail-row"><span>货物</span><b>${cargo?.icon} ${cargo?.name} ${Math.floor(caravan.amount)}</b></div><div class="detail-row"><span>交换货物</span><b>${caravan.returnResource ? `${tradeResourceDefs[caravan.returnResource].icon} ${tradeResourceDefs[caravan.returnResource].name} ${Math.floor(caravan.returnAmount)}` : "国内调拨"}</b></div><div class="detail-row"><span>状态</span><b>${route?.status === "blockaded" ? "突破封锁" : "运输中"}</b></div><div class="need-list">${needMeter("行程", progress)}${needMeter("商队安全", caravan.hp)}</div>`;
@@ -83,7 +84,7 @@ function inspectAt(x, y) {
 
 function inspectKingdom(kingdomId) {
   const kingdom = getKingdom(kingdomId); if (!kingdom) return;
-  selectedKingdomId = kingdomId; selectedTradeRouteId = null; selectedArmyId = null;
+  selectedKingdomId = kingdomId; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null;
   const box = document.getElementById("selectionCard"), citizens = peopleOfKingdom(kingdomId), realmVillages = villagesOfKingdom(kingdomId), race = raceDefs[kingdom.race] || raceDefs.human;
   const raceCounts = Object.fromEntries(Object.keys(raceDefs).map(key => [key, 0]));
   let soldiers = 0;
@@ -102,7 +103,7 @@ function inspectKingdom(kingdomId) {
 
 function inspectTradeRoute(routeId) {
   const route = getTradeRoute(routeId); if (!route) { selectedTradeRouteId = null; return; }
-  selectedKingdomId = null; selectedTradeRouteId = routeId; selectedArmyId = null;
+  selectedKingdomId = null; selectedTradeRouteId = routeId; selectedArmyId = null; selectedHeroId = null;
   const from = getVillage(route.fromVillage), to = getVillage(route.toVillage), inTransit = caravans.find(caravan => caravan.routeId === route.id), box = document.getElementById("selectionCard");
   const status = route.status === "active" ? "畅通" : route.status === "blockaded" ? "战争封锁" : "设施中断";
   box.classList.remove("empty");
@@ -111,7 +112,7 @@ function inspectTradeRoute(routeId) {
 
 function inspectArmy(armyId) {
   const army = getArmy(armyId); if (!army) { selectedArmyId = null; return; }
-  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = armyId;
+  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = armyId; selectedHeroId = null;
   const members = armySoldiers(army), general = members.find(person => person.id === army.generalId), kingdom = getKingdom(army.kingdomId), target = getVillage(army.targetVillageId), rally = getVillage(army.rallyVillageId), units = unitCountsFor(members), box = document.getElementById("selectionCard");
   const unitLine = Object.entries(unitDefs).filter(([type]) => units[type] > 0).map(([type, def]) => `${def.icon}${def.name} ${units[type]}`).join(" · ") || "暂无士兵";
   const statusLabels = { assembling: "集结", garrison: "驻防", advance: "推进", battle: "交战", siege: "围城", retreat: "撤退" };
@@ -246,7 +247,7 @@ function renderMapCursor(m) {
 
 function render() {
   const renderStarted = performance.now(), m = viewMetrics(); ctx.clearRect(0, 0, m.width, m.height); ctx.fillStyle = "#0f2534"; ctx.fillRect(0, 0, m.width, m.height);
-  const seasonalTint = seasonDefs[climate.season]?.tint || null;
+  const seasonalTint = seasonDefs[climate.season]?.tint || null, mapModeContext = mapMode === "natural" ? null : buildMapModeContext();
   const minX = clamp(Math.floor(-m.ox / m.size), 0, MAP_W), maxX = clamp(Math.ceil((m.width - m.ox) / m.size), 0, MAP_W);
   const minY = clamp(Math.floor(-m.oy / m.size), 0, MAP_H), maxY = clamp(Math.ceil((m.height - m.oy) / m.size), 0, MAP_H);
   for (let y = minY; y < maxY; y++) for (let x = minX; x < maxX; x++) {
@@ -254,7 +255,8 @@ function render() {
     const visualHash = (x * 37 + y * 61 + x * y * 3) % 19;
     const palette = terrainVisualColors[t.type]; ctx.fillStyle = t.fire ? terrainColors.fire : palette?.[visualHash % palette.length] || terrainColors[t.type]; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5));
     if (seasonalTint && isLand(t) && !t.fire) { ctx.fillStyle = seasonalTint; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5)); }
-    if (t.owner >= 0 && isLand(t)) { ctx.fillStyle = `${kingdoms[t.owner]?.color || "#fff"}35`; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
+    if (mapMode === "natural" && t.owner >= 0 && isLand(t)) { ctx.fillStyle = `${getKingdom(t.owner)?.color || "#fff"}35`; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
+    if (mapModeContext) { const modeColor = mapModeTileColor(t, mapModeContext); if (modeColor) { ctx.fillStyle = modeColor; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); } }
     if (t.owner >= 0 && m.size > 4) {
       ctx.strokeStyle = `${getKingdom(t.owner)?.color || "#fff"}a8`; ctx.lineWidth = 1;
       if (tileAt(x + 1, y)?.owner !== t.owner) { ctx.beginPath(); ctx.moveTo(sx + m.size, sy); ctx.lineTo(sx + m.size, sy + m.size); ctx.stroke(); }
@@ -310,7 +312,9 @@ function render() {
     if (m.size > 6) { const marker = p.role === "soldier" ? unitDefs[p.unitType] || unitDefs.militia : professionDefs[p.profession] || professionDefs.laborer; ctx.fillStyle = marker.color; ctx.fillRect(sx - r, sy + r + 1, r * 2, Math.max(1, m.size * .16)); }
     if (p.isGeneral && m.size > 5) { ctx.fillStyle = "#ffe37d"; ctx.beginPath(); ctx.moveTo(sx, sy - r - 3); ctx.lineTo(sx + 2.5, sy - r + 1); ctx.lineTo(sx - 2.5, sy - r + 1); ctx.closePath(); ctx.fill(); }
     if (p.plague > 0 && m.size > 5) { ctx.strokeStyle = "#c2ed74"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2); ctx.stroke(); }
+    renderHeroMarker(ctx, m, p, sx, sy, r);
   }
+  renderExperienceEffects(ctx, m);
   renderMapCursor(m);
   const elapsed = performance.now() - renderStarted;
   performanceMetrics.renderMs = performanceMetrics.renderMs ? performanceMetrics.renderMs * .9 + elapsed * .1 : elapsed;
@@ -364,7 +368,7 @@ function updateUI() {
     }
   }
   document.getElementById("warStat").textContent = warCount;
-  document.getElementById("eventLog").innerHTML = events.map(e => `<div class="event"><time>纪元 ${e.year}</time>${e.text}</div>`).join("");
+  document.getElementById("eventLog").innerHTML = events.map(e => `<div class="event ${e.kind || "event"}"><time>纪元 ${e.year}</time>${e.text}</div>`).join("");
   document.getElementById("renownStat").textContent = `✦ ${Math.floor(worldProgress.renown)}`;
   document.getElementById("goalList").innerHTML = Object.entries(worldGoalDefs).map(([id, goal]) => {
     const completed = Boolean(worldProgress.completedGoals[id]), value = Math.min(goal.target, Math.floor(goal.value())), percent = completed ? 100 : clamp(value / goal.target * 100, 0, 100);
@@ -378,7 +382,8 @@ function updateUI() {
   document.getElementById("worldStatsList").innerHTML = [
     ["出生", worldStats.births], ["逝者", worldStats.deaths], ["建立聚落", worldStats.villagesFounded], ["攻占聚落", worldStats.villagesCaptured],
     ["建成建筑", worldStats.buildingsConstructed], ["损毁建筑", worldStats.buildingsDestroyed], ["商队交付", worldStats.tradeDeliveries], ["累计货运", Math.floor(worldStats.tradeVolume)],
-    ["爆发战争", worldStats.warsStarted], ["结束战争", worldStats.warsEnded], ["天灾降临", worldStats.disastersTriggered], ["安然度过", worldStats.disastersSurvived]
+    ["爆发战争", worldStats.warsStarted], ["结束战争", worldStats.warsEnded], ["天灾降临", worldStats.disastersTriggered], ["安然度过", worldStats.disastersSurvived],
+    ["英雄涌现", worldStats.heroesEmerged || 0], ["时代抉择", worldStats.worldEventsResolved || 0]
   ].map(([label, value]) => `<span>${label}<b>${value}</b></span>`).join("");
   document.getElementById("chronicleList").innerHTML = chronicle.length ? `<p class="chronicle-summary">共 ${chronicle.length} 条记录 · 保留最近 240 条</p>` + chronicle.slice(0, 30).map(entry => `<div class="event ${entry.kind || "event"}"><time>纪元 ${entry.year}</time>${entry.text}</div>`).join("") : `<p class="muted">历史尚未落笔</p>`;
   let sampledMoisture = 0, sampledFertility = 0, climateSamples = 0;
@@ -428,8 +433,9 @@ function updateUI() {
   }).join("") : `<p class="muted">世界尚无文明</p>`;
   const relationOrder = { war: 0, alliance: 1, peace: 2 };
   const sortedRelations = relationPairs.sort((a, b) => relationOrder[a.status] - relationOrder[b.status]);
-  document.getElementById("diplomacyList").innerHTML = sortedRelations.length ? sortedRelations.map(r => `<div class="relation-item ${r.status}"><b>${r.a.name} ↔ ${r.b.name}</b><span>${statusLabels[r.status]} <i class="relation-score">${r.score}</i></span><button class="relation-action" data-diplomacy-action="${r.status === "war" ? "peace" : "war"}" data-kingdom-a="${r.a.id}" data-kingdom-b="${r.b.id}" title="神力干预外交">${r.status === "war" ? "促成议和" : "挑起战争"}</button></div>`).join("") : `<p class="muted">尚未建立国家关系</p>`;
+  document.getElementById("diplomacyList").innerHTML = sortedRelations.length ? sortedRelations.map(r => `<div class="relation-item ${r.status}" title="${cleanText(r.lastReason || "关系仍在形成")}"><b>${r.a.name} ↔ ${r.b.name}</b><span>${statusLabels[r.status]} <i class="relation-score">${Math.round(r.score)}</i></span><small>${diplomaticMemorySummary(r)}</small><em>${cleanText(r.lastReason || "关系仍在形成")}</em><button class="relation-action" data-diplomacy-action="${r.status === "war" ? "peace" : "war"}" data-kingdom-a="${r.a.id}" data-kingdom-b="${r.b.id}" title="神力干预外交">${r.status === "war" ? "促成议和" : "挑起战争"}</button></div>`).join("") : `<p class="muted">尚未建立国家关系</p>`;
   if (selectedKingdomId !== null) inspectKingdom(selectedKingdomId);
   if (selectedTradeRouteId !== null) inspectTradeRoute(selectedTradeRouteId);
   if (selectedArmyId !== null) inspectArmy(selectedArmyId);
+  renderExperiencePanels();
 }

@@ -3,7 +3,7 @@
 const { createWorldRuntime } = require("../tests/headless-world.js");
 
 const quick = process.argv.includes("--quick");
-const sampleCount = Math.max(2, Number(process.env.BALANCE_SAMPLES) || (quick ? 4 : 12));
+const sampleCount = Math.max(2, Number(process.env.BALANCE_SAMPLES) || (quick ? 5 : 12));
 const seeds = Array.from({ length: sampleCount }, (_, index) => `balance-${String(index + 1).padStart(2, "0")}`);
 const targetYear = Math.max(10, Number(process.env.BALANCE_YEAR) || 50);
 const rows = [];

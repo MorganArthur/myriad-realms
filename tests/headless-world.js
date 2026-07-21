@@ -26,7 +26,9 @@ function createWorldRuntime() {
   const storage = new Map();
   const document = {
     body: createElement("body"),
+    documentElement: { clientWidth: 1280, clientHeight: 720 },
     getElementById(id) { if (!elements.has(id)) elements.set(id, createElement(id)); return elements.get(id); },
+    querySelector() { return null; },
     querySelectorAll() { return []; },
     createElement: tag => createElement(tag)
   };
@@ -42,7 +44,7 @@ function createWorldRuntime() {
   context.window = context;
   context.addEventListener = () => {};
   context.requestIdleCallback = callback => (callback(), 1);
-  for (const file of ["engine-core.js", "world-config.js", "game-ui.js", "game-persistence.js", "game.js"]) {
+  for (const file of ["engine-core.js", "world-config.js", "experience-system.js", "game-ui.js", "game-persistence.js", "game.js"]) {
     new vm.Script(fs.readFileSync(path.join(root, file), "utf8"), { filename: file }).runInContext(context);
   }
   return { debug: context.RealmDebug, config: context.RealmConfig, engine: context.WorldEngine, context };

@@ -26,7 +26,9 @@ const achievementDefs = {
   rebellion: { name: "旧邦新生", icon: "✊", description: "见证一个叛乱政权诞生", points: 15, unlocked: () => worldStats.rebellions >= 1 },
   century: { name: "百年史诗", icon: "📜", description: "世界延续到纪元 100", points: 25, unlocked: () => year >= 100 },
   first_discovery: { name: "知识火花", icon: "💡", description: "任意文明取得第一项科技", points: 10, unlocked: () => kingdoms.some(kingdom => totalTechnologyLevel(kingdom) >= 1) },
-  renaissance: { name: "文明盛世", icon: "🌟", description: "任意文明累计达到 8 级科技", points: 25, unlocked: () => kingdoms.some(kingdom => totalTechnologyLevel(kingdom) >= 8) }
+  renaissance: { name: "文明盛世", icon: "🌟", description: "任意文明累计达到 8 级科技", points: 25, unlocked: () => kingdoms.some(kingdom => totalTechnologyLevel(kingdom) >= 8) },
+  first_hero: { name: "传奇初章", icon: "♛", description: "世界诞生第一位英雄", points: 10, unlocked: () => heroes.length >= 1 },
+  world_story: { name: "时代抉择", icon: "📜", description: "完成一条世界事件链", points: 15, unlocked: () => worldEventState.history.length >= 2 }
 };
 const worldGoalDefs = {
   settlement_network: { name: "拓土成邦", description: "建立 6 个聚落", icon: "🏘", target: 6, points: 20, value: () => villages.length },
@@ -67,6 +69,7 @@ function createWorldStats() {
   return {
     births: 0, deaths: 0, villagesFounded: 0, villagesCaptured: 0, buildingsConstructed: 0, buildingsDestroyed: 0,
     tradeDeliveries: 0, tradeVolume: 0, warsStarted: 0, warsEnded: 0, disastersTriggered: 0, disastersSurvived: 0, rebellions: 0,
+    heroesEmerged: 0, worldEventsResolved: 0,
     peakPopulation: 0, peakVillages: 0, peakKingdoms: 0, peakAnimals: 0
   };
 }
@@ -394,10 +397,10 @@ function relationBetween(aId, bId) {
 
 function setRelation(aId, bId, status, score, silent = false) {
   const a = getKingdom(aId), b = getKingdom(bId); if (!a || !b || aId === bId) return;
-  const previousStatus = relationBetween(aId, bId)?.status;
-  const value = { status, score: clamp(Math.round(score), -100, 100), since: Math.floor(year) };
-  a.relations[String(bId)] = { ...value };
-  b.relations[String(aId)] = { ...value };
+  const previous = relationBetween(aId, bId), previousStatus = previous?.status;
+  const value = createDiplomaticRelationState(previous, status, score, Math.floor(year));
+  a.relations[String(bId)] = { ...value, memories: value.memories.map(memory => ({ ...memory })) };
+  b.relations[String(aId)] = { ...value, memories: value.memories.map(memory => ({ ...memory })) };
   if (previousStatus && previousStatus !== status) {
     if (status === "war") worldStats.warsStarted++;
     if (previousStatus === "war" && status === "peace") worldStats.warsEnded++;
@@ -405,6 +408,7 @@ function setRelation(aId, bId, status, score, silent = false) {
   if (!silent) {
     const phrase = status === "war" ? "正式开战" : status === "alliance" ? "缔结同盟" : "恢复和平";
     addEvent(`${a.name}与${b.name}${phrase}。`);
+    if (previousStatus !== status) recordDiplomaticMemory(aId, bId, status, phrase, status === "alliance" ? 10 : status === "peace" ? 4 : -12, status === "war" ? 18 : -6);
   }
 }
 
@@ -463,6 +467,7 @@ function generateWorld(seed = document.getElementById("worldSeedInput").value ||
     tiles.push({ type, fertility: type === "forest" ? 1 : type === "grass" ? .75 : .25, biomass, moisture: clamp(moisture[idx(x, y)], .08, .95), temperature: latitudeTemperature - (type === "mountain" ? 8 : 0) + rand(-1.5, 1.5), fire: 0, owner: -1 });
   }
   people = []; animals = []; villages = []; kingdoms = []; events = []; chronicle = []; activeDisasters = []; tradeRoutes = []; caravans = []; armies = []; worldStats = createWorldStats(); worldProgress = createWorldProgress(); year = 1; ticks = 0; climate = { season: "spring", weather: "clear", temperature: 16, rainfall: .72, seasonProgress: 0, weatherUntil: 1.8, nextWeatherYear: 1.8 }; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextArmyId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; indexesReady = false; lastAutoSaveYear = 1;
+  resetExperienceState();
   camera = { x: 0, y: 0, zoom: 1 };
   const valid = habitableTileIndices();
   const anchors = [];
@@ -488,6 +493,7 @@ function generateWorld(seed = document.getElementById("worldSeedInput").value ||
   }
   populateWildlife(valid);
   updateProfessions();
+  heroStep(true);
   scheduleNextDisaster();
   rebuildWorldIndexes();
   document.getElementById("worldName").textContent = worldNames[randi(0, worldNames.length - 1)];
@@ -1217,6 +1223,7 @@ function simulationStep() {
   if (ticks % BALANCE.cadence.diplomacy === 0) { diplomacyStep(); updateTradeRoutes(); }
   if (ticks % BALANCE.cadence.colonies === 0) attemptColonies();
   if (ticks % BALANCE.cadence.biodiversity === 0) maintainBiodiversity();
+  experienceSimulationStep();
 
   const peopleAtStepStart = people.length;
   for (let personIndex = 0; personIndex < peopleAtStepStart; personIndex++) {
@@ -1562,6 +1569,7 @@ function triggerDisaster(type, x, y, randomSource = false) {
   if (type === "plague") seedPlague(disaster);
   const cause = randomSource ? "天灾预警" : "神力降灾";
   addEvent(`${def.icon} ${cause}：${disasterLocation(disaster)}发生${def.name}。`);
+  spawnExperienceEffect("power", disaster.x, disaster.y, def.color); playExperienceSound("disaster");
   if (!randomSource) showToast(`${def.icon} ${def.name}已经降临`);
   renderDirty = true; updateUI(); return disaster;
 }
@@ -1694,7 +1702,10 @@ const armySoldiers = army => (army?.soldierIds || []).map(getPerson).filter(pers
 const armyOfSoldier = personId => armies.find(army => army.soldierIds?.includes(personId)) || null;
 
 function recordSoldierCasualty(person) {
-  const army = armyOfSoldier(person.id); if (army) army.casualties = (army.casualties || 0) + 1;
+  const army = armyOfSoldier(person.id); if (!army) return;
+  army.casualties = (army.casualties || 0) + 1;
+  army.soldierIds = army.soldierIds.filter(id => id !== person.id);
+  if (army.generalId === person.id) army.generalId = null;
 }
 
 function unitCountsFor(soldiers) {
@@ -1749,12 +1760,12 @@ function reorganizeArmies(preserveAssignments = false) {
     for (const army of realmArmies) {
       const members = armySoldiers(army); if (!members.length) continue;
       let general = members.find(person => person.id === army.generalId);
-      if (!general) {
+      if (!general && !preserveAssignments) {
         general = [...members].sort((a, b) => (b.leadership || 1) + b.age * .002 + b.health * .001 - ((a.leadership || 1) + a.age * .002 + a.health * .001))[0];
         const replacing = Boolean(army.generalId); army.generalId = general.id; general.leadership = rand(1.04, 1.34);
         if (atWar && replacing) addEvent(`${army.name}推举${unitDefs[general.unitType]?.name || "军官"} #${general.id}接任将领。`);
       }
-      general.isGeneral = true;
+      if (general) general.isGeneral = true; else army.generalId = null;
       const rally = getVillage(army.rallyVillageId) || armyRallyVillage(kingdom.id); army.rallyVillageId = rally?.id || null;
       const calculatedMaxSupply = Math.max(45, members.reduce((sum, person) => sum + (unitDefs[person.unitType]?.supply || 1) * 11, 0) + buildingCount(rally || {}, "warehouse") * 28);
       army.maxSupply = preserveAssignments ? Math.max(45, Number(army.maxSupply) || calculatedMaxSupply) : calculatedMaxSupply;
@@ -1852,11 +1863,11 @@ function militaryBehavior(person) {
   if (nearbyEnemy) {
     const distance = Math.hypot(nearbyEnemy.x - person.x, nearbyEnemy.y - person.y);
     if (distance <= unit.range && person.attackCooldown <= 0) {
-      const enemyUnit = unitDefs[nearbyEnemy.unitType] || unitDefs.militia, damage = rand(10, 21) * unit.attack * (raceDefs[person.race]?.combat || 1) * moraleFactor * supplyFactor * leadership * metallurgyBonus * (person.blessed ? 1.3 : 1) / enemyUnit.defense;
+      const enemyUnit = unitDefs[nearbyEnemy.unitType] || unitDefs.militia, damage = rand(10, 21) * unit.attack * (raceDefs[person.race]?.combat || 1) * moraleFactor * supplyFactor * leadership * metallurgyBonus * heroCombatMultiplier(person) * (person.blessed ? 1.3 : 1) / enemyUnit.defense;
       nearbyEnemy.health -= damage;
       if (distance <= enemyUnit.range && unit.range < 2.5) person.health -= rand(1, 6) * enemyUnit.attack / unit.defense;
       person.attackCooldown = unit.range > 2 ? 7 : unit.speed > 1.2 ? 4 : 5;
-      if (nearbyEnemy.health <= 0) { if (nearbyEnemy.role === "soldier") recordSoldierCasualty(nearbyEnemy); nearbyEnemy.dead = true; }
+      if (nearbyEnemy.health <= 0) { if (nearbyEnemy.role === "soldier") recordSoldierCasualty(nearbyEnemy); nearbyEnemy.dead = true; recordHeroVictory(person); spawnExperienceEffect("battle", nearbyEnemy.x, nearbyEnemy.y, "#e56f57"); playExperienceSound("battle"); }
     } else walkToward(person, nearbyEnemy.x, nearbyEnemy.y);
     return;
   }
@@ -1944,23 +1955,24 @@ function diplomacyStep() {
     let relation = relationBetween(a.id, b.id);
     if (!relation) { setRelation(a.id, b.id, "peace", randi(-15, 25), true); relation = relationBetween(a.id, b.id); }
     const bordered = shareBorder(a.id, b.id), nearby = kingdomsAreClose(a.id, b.id), strengthA = peopleOfKingdom(a.id).length, strengthB = peopleOfKingdom(b.id).length;
+    const intelligence = evaluateDiplomaticPair(a, b, relation, { bordered, nearby, strengthA, strengthB });
     if (relation.status === "war") {
       const warYears = year - relation.since;
       relation.score = Math.max(-100, relation.score - randi(0, 3));
       getKingdom(b.id).relations[String(a.id)].score = relation.score;
       a.warWeariness += BALANCE.diplomacy.wearinessPerCycle; b.warWeariness += BALANCE.diplomacy.wearinessPerCycle;
-      if ((warYears > 7 && random() < .28) || Math.min(strengthA, strengthB) < 5 || Math.max(a.warWeariness, b.warWeariness) > BALANCE.diplomacy.forcedPeaceWeariness) {
+      if (intelligence.seekPeace || (warYears > 7 && random() < .28) || Math.min(strengthA, strengthB) < 5 || Math.max(a.warWeariness, b.warWeariness) > BALANCE.diplomacy.forcedPeaceWeariness) {
         setRelation(a.id, b.id, "peace", randi(-28, -8)); a.warWeariness = 0; b.warWeariness = 0;
       }
     } else {
       const resourceGap = Math.abs(a.resources.food - b.resources.food) > 120 ? -2 : 1;
       const raceAffinity = a.race === b.race ? 1 : (a.race === "orc" || b.race === "orc") ? -1 : 0;
       const proximityDrift = bordered ? BALANCE.diplomacy.borderDrift : nearby ? BALANCE.diplomacy.nearbyDrift : BALANCE.diplomacy.distantDrift;
-      relation.score = clamp(relation.score + randi(BALANCE.diplomacy.relationRandomMin, BALANCE.diplomacy.relationRandomMax) + proximityDrift + resourceGap + raceAffinity, -100, 100);
+      relation.score = clamp(relation.score + randi(BALANCE.diplomacy.relationRandomMin, BALANCE.diplomacy.relationRandomMax) + proximityDrift + resourceGap + raceAffinity + intelligence.drift, -100, 100);
       getKingdom(b.id).relations[String(a.id)].score = relation.score;
       if (relation.status === "alliance" && relation.score < BALANCE.diplomacy.allianceBreakThreshold) setRelation(a.id, b.id, "peace", relation.score);
       else if (relation.status === "peace" && relation.score > BALANCE.diplomacy.allianceThreshold) setRelation(a.id, b.id, "alliance", relation.score);
-      else if (relation.status === "peace" && relation.score < BALANCE.diplomacy.warThreshold && (bordered || nearby) && strengthA >= 5 && strengthB >= 5) setRelation(a.id, b.id, "war", relation.score);
+      else if (relation.status === "peace" && relation.score < BALANCE.diplomacy.warThreshold + intelligence.escalation && (bordered || nearby) && strengthA >= 5 && strengthB >= 5) setRelation(a.id, b.id, "war", relation.score);
     }
   }
 }
@@ -2008,11 +2020,13 @@ function setRunning(value, refreshUI = true) {
   running = Boolean(value);
   const button = document.getElementById("pauseBtn");
   button.textContent = running ? "Ⅱ" : "▶"; button.classList.toggle("active", !running);
+  if (running) tutorialSignal("start-time");
   if (!running && refreshUI && tiles.length) updateUI();
 }
 
 document.querySelectorAll(".tool").forEach(btn => btn.addEventListener("click", () => {
   document.querySelectorAll(".tool").forEach(b => b.classList.remove("active")); btn.classList.add("active"); selectedTool = btn.dataset.tool;
+  if (selectedTool === "forest") tutorialSignal("select-tool"); playExperienceSound("click");
 }));
 document.querySelectorAll(".speed-btn").forEach(btn => btn.addEventListener("click", () => {
   document.querySelectorAll(".speed-btn").forEach(b => b.classList.remove("active")); btn.classList.add("active"); speed = Number(btn.dataset.speed);
@@ -2075,7 +2089,11 @@ document.getElementById("selectionCard").addEventListener("click", e => {
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 canvas.addEventListener("mousedown", e => {
   if (e.button === 2) { dragging = true; lastMouse = { x: e.clientX, y: e.clientY }; }
-  if (e.button === 0) { painting = true; const p = screenToGrid(e.clientX, e.clientY); applyTool(p.x, p.y); }
+  if (e.button === 0) {
+    painting = true; const p = screenToGrid(e.clientX, e.clientY); applyTool(p.x, p.y);
+    if (selectedTool === "inspect") tutorialSignal("inspect-map");
+    else { tutorialSignal("use-tool"); if (!disasterDefs[selectedTool]) spawnExperienceEffect("power", p.x, p.y, selectedTool === "water" ? "#70cbe2" : selectedTool === "fire" || selectedTool === "meteor" ? "#ed7657" : "#e8cc70"); playExperienceSound("power"); }
+  }
 });
 window.addEventListener("mouseup", () => { dragging = false; painting = false; });
 canvas.addEventListener("mousemove", e => {
@@ -2107,6 +2125,7 @@ function updatePerformanceDisplay(now) {
 function frame(now) {
   performanceMetrics.frames++;
   const dt = Math.min(100, now - last); last = now;
+  updateExperienceEffects(dt);
   if (running) {
     accumulator += dt * speed; let steps = 0;
     while (accumulator >= 80 && steps < 2) { simulationStep(); accumulator -= 80; steps++; }
@@ -2121,12 +2140,18 @@ function debugSnapshot() {
   const populationByRace = Object.fromEntries(Object.keys(raceDefs).map(race => [race, 0]));
   for (const person of people) populationByRace[person.race] = (populationByRace[person.race] || 0) + 1;
   const activeKingdoms = kingdoms.filter(kingdom => !kingdom.defeated);
+  const diplomacy = [];
+  for (let first = 0; first < activeKingdoms.length; first++) for (let second = first + 1; second < activeKingdoms.length; second++) {
+    const relation = relationBetween(activeKingdoms[first].id, activeKingdoms[second].id); if (relation) diplomacy.push([activeKingdoms[first].id, activeKingdoms[second].id, relation.status, round3(relation.score), Math.round(relation.trust || 0), Math.round(relation.fear || 0), Math.round(relation.grievance || 0), relation.intent]);
+  }
   return {
     seed: worldSeed, year: round3(year), ticks, terrain, population: people.length, populationByRace, animals: animalCounts(true), villages: villages.length,
     kingdoms: activeKingdoms.length, wars: activeKingdoms.reduce((sum, kingdom) => sum + Object.values(kingdom.relations || {}).filter(relation => relation.status === "war").length, 0) / 2,
     famineRealms: activeKingdoms.filter(kingdom => kingdom.famine).length, disasters: activeDisasters.map(disaster => [disaster.type, round3(disaster.x), round3(disaster.y), disaster.duration]),
     resources: activeKingdoms.map(kingdom => [kingdom.id, round3(kingdom.resources.food), round3(kingdom.resources.wood), round3(kingdom.resources.stone)]),
-    technology: activeKingdoms.map(kingdom => [kingdom.id, totalTechnologyLevel(kingdom)]), randomState: getRandomState(),
+    technology: activeKingdoms.map(kingdom => [kingdom.id, totalTechnologyLevel(kingdom)]), diplomacy, randomState: getRandomState(),
+    heroes: heroes.filter(hero => hero.status === "active").map(hero => [hero.id, hero.kingdomId, hero.level, round3(hero.renown), hero.victories]),
+    worldEvents: worldEventState.history.map(entry => [entry.chain, entry.stage, entry.choice, entry.year]),
     history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries }
   };
 }
@@ -2150,4 +2175,4 @@ document.getElementById("autoSaveToggle").checked = autoSaveEnabled;
 document.getElementById("randomDisasterToggle").checked = randomDisastersEnabled;
 document.getElementById("disasterFrequency").value = disasterFrequency;
 document.getElementById("worldSeedInput").value = createRandomSeed();
-resizeCanvas(); generateWorld(document.getElementById("worldSeedInput").value); requestAnimationFrame(frame);
+initializeExperienceUI(); resizeCanvas(); generateWorld(document.getElementById("worldSeedInput").value); maybeStartTutorial(); requestAnimationFrame(frame);
