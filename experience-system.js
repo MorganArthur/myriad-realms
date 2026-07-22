@@ -465,9 +465,10 @@ function renderCodex(tab = "peoples") {
       { icon: "❖", title: "文明野心", text: "八类长期野心各有三个里程碑，完成后会留下持续影响后世的永久传承。" },
       { icon: "♚", title: "王朝与继承", text: "四种继承法会依据血缘、年资、声望或军功选择统治者；幼主由摄政辅政，争议继承会动摇国家。" },
       { icon: "♥", title: "人物关系", text: "居民拥有姓名、性别、亲代、配偶、子女、亲近、信任、竞争和共同记忆，关系会延续至后代。" },
+      { icon: "⚖", title: "派系与议会", text: "宫廷、民生、行会、信仰和军功五派争夺席位并提出政策议案；支持、妥协或否决都会留下长期政治后果。" },
       { icon: "📜", title: "世界事件链", text: "重大事件分阶段展开，抉择会改变资源、研究、社会和外交。" },
       { icon: "🗺", title: "地图模式", text: "自然、政治、肥力、人口和外交视图从不同维度解释同一世界。" },
-      { icon: "💾", title: "确定性存档", text: "世界种子与随机状态共同保存，可从同一时间线继续演化。" }
+      { icon: "💾", title: "确定性存档", text: "世界种子、随机状态、人物家谱、王朝和派系政治共同保存，可从同一时间线继续演化。" }
     ]
   };
   document.querySelectorAll?.("[data-codex-tab]").forEach(button => button.classList.toggle("active", button.dataset.codexTab === tab));

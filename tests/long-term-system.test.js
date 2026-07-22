@@ -12,14 +12,14 @@ test("新世界中的四个文明拥有时代与种族倾向野心", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(snapshot.development.map(entry => entry[2]))), ["unity", "harmony", "wonder", "hegemony"]);
 });
 
-test("时代与野心状态通过 v16 存档无损续接", () => {
+test("时代与野心状态通过 v17 存档无损续接", () => {
   const { debug } = createWorldRuntime();
   debug.generate("long-term-save");
   debug.setRandomDisasters(false);
   debug.step(420);
   const before = debug.snapshot();
   const save = structuredClone(debug.saveData());
-  assert.equal(save.version, 16);
+  assert.equal(save.version, 17);
   assert.ok(save.kingdoms.every(kingdom => kingdom.development && kingdom.development.era));
   debug.restore(save);
   const after = debug.snapshot();
