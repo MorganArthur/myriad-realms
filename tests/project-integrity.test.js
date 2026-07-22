@@ -17,7 +17,8 @@ const longTerm = fs.readFileSync(path.join(root, "long-term-system.js"), "utf8")
 const dynasty = fs.readFileSync(path.join(root, "dynasty-system.js"), "utf8");
 const politics = fs.readFileSync(path.join(root, "politics-system.js"), "utf8");
 const legacy = fs.readFileSync(path.join(root, "legacy-system.js"), "utf8");
-const app = [game, ui, persistence, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy].join("\n");
+const challenges = fs.readFileSync(path.join(root, "world-challenge-system.js"), "utf8");
+const app = [game, ui, persistence, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges].join("\n");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 
 test("运行脚本按依赖顺序加载", () => {
@@ -30,7 +31,8 @@ test("运行脚本按依赖顺序加载", () => {
   assert.ok(html.indexOf('src="dynasty-system.js"') > html.indexOf('src="long-term-system.js"'));
   assert.ok(html.indexOf('src="politics-system.js"') > html.indexOf('src="dynasty-system.js"'));
   assert.ok(html.indexOf('src="legacy-system.js"') > html.indexOf('src="politics-system.js"'));
-  assert.ok(html.indexOf('src="game-ui.js"') > html.indexOf('src="legacy-system.js"'));
+  assert.ok(html.indexOf('src="world-challenge-system.js"') > html.indexOf('src="legacy-system.js"'));
+  assert.ok(html.indexOf('src="game-ui.js"') > html.indexOf('src="world-challenge-system.js"'));
   assert.ok(html.indexOf('src="game-persistence.js"') > html.indexOf('src="game-ui.js"'));
   assert.ok(html.indexOf('src="game.js"') > html.indexOf('src="game-persistence.js"'));
 });
@@ -46,7 +48,7 @@ test("代码引用的 DOM id 全部存在且页面 id 唯一", () => {
 test("新版档案包含体验历史、世界种子与随机状态", () => {
   const version = Number(persistence.match(/version:\s*(\d+),\s*savedAt/)?.[1]);
   assert.ok(version >= 19);
-  for (const field of ["chronicle", "worldStats", "worldProgress", "culture", "technology", "development", "dynasty", "politics", "heroes", "worldEventState", "legacySites", "artifacts", "wonders", "legacyState", "worldSeed", "randomState"]) assert.match(app, new RegExp(`\\b${field}\\b`));
+  for (const field of ["chronicle", "worldStats", "worldProgress", "culture", "technology", "development", "dynasty", "politics", "heroes", "worldEventState", "legacySites", "artifacts", "wonders", "legacyState", "worldRuleState", "worldSeed", "randomState"]) assert.match(app, new RegExp(`\\b${field}\\b`));
 });
 
 test("文化科技与六个核心模拟系统相连", () => {
@@ -78,7 +80,7 @@ test("模拟、视图、存档和静态规则保持独立模块边界", () => {
 });
 
 test("正式运行时代码不绕过种子随机数", () => {
-  for (const [name, source] of Object.entries({ game, ui, persistence, config, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
+  for (const [name, source] of Object.entries({ game, ui, persistence, config, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
 });
 
 test("文明时代与八类长期野心均已接入模拟、界面和存档", () => {
@@ -139,6 +141,15 @@ test("六类后期危机拥有永久结局、持续修正与地形后果", () =>
   assert.match(persistence, /sourceVersion < 21/);
   assert.match(legacy, /crisisLegacies/);
   assert.match(legacy, /permanentModifiers/);
+});
+
+test("六项组合挑战、分享码和跨世界档案接入生成、模拟与存档", () => {
+  assert.equal([...challenges.matchAll(/^\s{2}(scarce_resources|harsh_climate|relentless_disasters|fractured_realms|fragile_ecology|slow_progress):\s*\{/gm)].length, 6);
+  for (const fn of ["buildWorldChallengeCode", "parseWorldChallengeCode", "applyWorldRuleGeneration", "worldRuleSimulationStep", "worldChallengeScore", "archiveCurrentWorld", "normalizeWorldRuleState"]) assert.match(challenges, new RegExp(`function ${fn}\\(`));
+  assert.match(game, /worldRuleSimulationStep\(\)/);
+  assert.match(game, /applyWorldRuleGeneration\(\)/);
+  assert.match(persistence, /worldRuleState/);
+  for (const id of ["worldRuleList", "challengeCodeInput", "crossWorldArchiveList", "archiveCurrentWorldBtn"]) assert.match(html, new RegExp(`id="${id}"`));
 });
 
 test("教程、外交记忆、英雄、事件链、音效、地图模式与百科均已接入", () => {

@@ -87,6 +87,12 @@
           <div><input id="worldSeedInput" type="text" maxlength="64" spellcheck="false" aria-describedby="seedHint" /><button id="randomSeedBtn" type="button" title="生成随机种子">↻</button></div>
           <small id="seedHint">相同种子与操作会得到相同世界</small>
         </div>
+        <section class="challenge-rules" aria-labelledby="challengeRulesTitle">
+          <div class="challenge-rules-title"><b id="challengeRulesTitle">组合挑战</b><small id="challengeDifficulty">标准沙盒</small></div>
+          <div id="worldRuleList" class="world-rule-list"></div>
+          <label for="challengeCodeInput">挑战码</label>
+          <div class="challenge-code-row"><input id="challengeCodeInput" type="text" maxlength="260" spellcheck="false" /><button id="applyChallengeCodeBtn" type="button">应用</button><button id="copyChallengeCodeBtn" type="button">复制</button></div>
+        </section>
         <div class="separator"></div>
         <button id="newWorldBtn" class="wide-btn">生成新世界</button>
         <button id="saveBtn" class="wide-btn secondary">快速保存</button>
@@ -174,12 +180,16 @@
 
   <section id="archiveModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="archiveTitle" hidden>
     <div class="archive-modal">
-      <div class="modal-title"><div><h2 id="archiveTitle">世界档案馆</h2><p>三个手动槽位与一个自动存档</p></div><button id="closeArchiveBtn" class="modal-close" aria-label="关闭">×</button></div>
+      <div class="modal-title"><div><h2 id="archiveTitle">世界档案馆</h2><p>存档槽保存进度，跨世界档案记录不同世界的最终成绩</p></div><button id="closeArchiveBtn" class="modal-close" aria-label="关闭">×</button></div>
       <div id="saveSlots" class="save-slots"></div>
       <div class="archive-options">
         <label><input id="autoSaveToggle" type="checkbox" checked /> 每 5 个纪元自动保存</label>
         <div><button id="exportSaveBtn" class="wide-btn secondary small">导出当前世界</button><label class="wide-btn secondary small file-label">导入存档<input id="importSaveInput" type="file" accept="application/json,.json" /></label></div>
       </div>
+      <section class="cross-world-archive" aria-labelledby="crossWorldArchiveTitle">
+        <div><h3 id="crossWorldArchiveTitle">跨世界档案</h3><button id="archiveCurrentWorldBtn" class="wide-btn secondary small">封存当前世界</button></div>
+        <div id="crossWorldArchiveList" class="cross-world-list"></div>
+      </section>
     </div>
   </section>
   <aside id="tutorialPanel" class="tutorial-panel" aria-live="polite" hidden></aside>
@@ -211,6 +221,7 @@
   <script src="dynasty-system.js"></script>
   <script src="politics-system.js"></script>
   <script src="legacy-system.js"></script>
+  <script src="world-challenge-system.js"></script>
   <script src="game-ui.js"></script>
   <script src="game-persistence.js"></script>
   <script src="game.js"></script>

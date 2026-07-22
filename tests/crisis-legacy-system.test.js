@@ -40,11 +40,11 @@ test("永涨潮汐失守会永久改写海岸线并留下淹没旧镇", () => {
   assert.equal(after.legacy.legacies[0][0], "drowned_coasts");
 });
 
-test("v21 存档无损续接永久危机遗产并从 v20 安全迁移", () => {
+test("v22 存档无损续接永久危机遗产并从 v20 安全迁移", () => {
   const { debug } = createWorldRuntime();
   debug.generate("crisis-legacy-save"); debug.triggerWorldCrisis("broken_oaths"); debug.finishWorldCrisis(true); debug.triggerWorldCrisis("worldfire"); debug.finishWorldCrisis(false);
   const before = plain(debug.snapshot().legacy), save = structuredClone(debug.saveData());
-  assert.equal(save.version, 21); debug.restore(save); assert.deepEqual(plain(debug.snapshot().legacy), before);
+  assert.equal(save.version, 22); debug.restore(save); assert.deepEqual(plain(debug.snapshot().legacy), before);
   const old = structuredClone(save); old.version = 20; delete old.legacyState.crisisLegacies; delete old.legacyState.permanentModifiers;
-  const migrated = debug.restore(old); assert.deepEqual(plain(migrated.legacy.legacies), []); assert.deepEqual(plain(migrated.legacy.modifiers), {}); assert.equal(debug.saveData().version, 21);
+  const migrated = debug.restore(old); assert.deepEqual(plain(migrated.legacy.legacies), []); assert.deepEqual(plain(migrated.legacy.modifiers), {}); assert.equal(debug.saveData().version, 22);
 });

@@ -346,7 +346,7 @@ function habitableTileIndices() {
 
 function scheduleNextDisaster() {
   const range = disasterIntervals[disasterFrequency] || disasterIntervals.normal;
-  nextDisasterYear = year + rand(range[0], range[1]);
+  nextDisasterYear = year + rand(range[0], range[1]) * worldRuleMultiplier("disasterInterval");
 }
 
 function seasonForYear(value = year) {
@@ -463,7 +463,9 @@ function createKingdom(race = "human") {
 }
 
 function generateWorld(seed = document.getElementById("worldSeedInput").value || createRandomSeed()) {
+  const challenge = parseWorldChallengeCode(seed); if (challenge) { seed = challenge.seed; setWorldRules(challenge.rules); }
   worldSeed = setSeed(seed);
+  beginWorldRuleRun(worldSeed);
   document.getElementById("worldSeedInput").value = worldSeed;
   document.getElementById("worldSeedStat").textContent = `种子 ${worldSeed}`;
   const elevation = smoothNoise(MAP_W, MAP_H, 4);
@@ -508,6 +510,7 @@ function generateWorld(seed = document.getElementById("worldSeedInput").value ||
   for (const kingdom of kingdoms) updateFactionStates(kingdom);
   heroStep(true);
   initializeLegacyWorld();
+  applyWorldRuleGeneration();
   scheduleNextDisaster();
   rebuildWorldIndexes();
   document.getElementById("worldName").textContent = worldNames[randi(0, worldNames.length - 1)];
@@ -1242,7 +1245,7 @@ function simulationStep() {
   const ecologyStride = people.length + animals.length > BALANCE.simulation.adaptiveEcologyThreshold ? 3 : 2;
   regenerateBiomass(); if (ticks % ecologyStride === 0) simulateAnimals(ecologyStride);
   if (ticks % BALANCE.cadence.resources === 0) produceResources();
-  if (ticks % BALANCE.cadence.culture === 0) { dispatchCaravans(); governanceStep(); cultureTechnologyStep(); longTermDevelopmentStep(); dynastySimulationStep(); politicsSimulationStep(); legacySimulationStep(); }
+  if (ticks % BALANCE.cadence.culture === 0) { dispatchCaravans(); governanceStep(); cultureTechnologyStep(); longTermDevelopmentStep(); dynastySimulationStep(); politicsSimulationStep(); legacySimulationStep(); worldRuleSimulationStep(); }
   if (ticks % BALANCE.cadence.professions === 0) { updateMilitaryRoles(); updateProfessions(); }
   if (ticks % BALANCE.cadence.diplomacy === 0) { diplomacyStep(); updateTradeRoutes(); }
   if (ticks % BALANCE.cadence.colonies === 0) attemptColonies();
@@ -1579,7 +1582,7 @@ function seedPlague(disaster) {
 function triggerDisaster(type, x, y, randomSource = false) {
   const def = disasterDefs[type]; if (!def) return null;
   if (activeDisasters.length >= 12) { if (!randomSource) showToast("同时存在的灾害太多了"); return null; }
-  const point = nearestLandPoint(x, y), intensity = randomSource ? randi(2, 4) : clamp(brushSize, 1, 6);
+  const point = nearestLandPoint(x, y), intensity = clamp((randomSource ? randi(2, 4) : brushSize) + worldRuleModifier("disasterIntensity"), 1, 6);
   const disaster = {
     id: nextDisasterId++, type, x: point.x, y: point.y, intensity,
     radius: def.radius + Math.floor(intensity * .75), duration: def.duration + intensity * 18,
@@ -2061,7 +2064,7 @@ document.querySelectorAll(".speed-btn").forEach(btn => btn.addEventListener("cli
 }));
 document.getElementById("pauseBtn").addEventListener("click", () => setRunning(!running));
 document.getElementById("brushSize").addEventListener("input", e => { brushSize = Number(e.target.value); document.getElementById("brushValue").textContent = brushSize; });
-document.getElementById("newWorldBtn").addEventListener("click", () => { if (confirm("生成新世界会抹去当前未保存的进度，继续吗？")) generateWorld(document.getElementById("worldSeedInput").value); });
+document.getElementById("newWorldBtn").addEventListener("click", () => { if (confirm("生成新世界会抹去当前未保存的进度，继续吗？")) { archiveCurrentWorld("replaced", false); generateWorld(document.getElementById("worldSeedInput").value); } });
 document.getElementById("randomSeedBtn").addEventListener("click", () => { document.getElementById("worldSeedInput").value = createRandomSeed(); });
 document.getElementById("worldSeedInput").addEventListener("keydown", event => { if (event.key === "Enter") document.getElementById("newWorldBtn").click(); });
 document.getElementById("saveBtn").addEventListener("click", () => saveWorld(activeSaveSlot, true));
@@ -2206,6 +2209,7 @@ function debugSnapshot() {
       pending: worldEventState.pending ? [worldEventState.pending.chain, worldEventState.pending.stage, round3(worldEventState.pending.availableYear), worldEventState.pending.participants.map(participant => [participant.role, participant.kingdomId])] : null,
       consequences: worldEventState.consequences.map(item => [item.id, item.chain, item.choice, round3(item.dueYear), item.participantIds]), completed: Object.entries(worldEventState.completed).sort(([a], [b]) => a.localeCompare(b)), locked: [...worldEventState.locked].sort(), memories: worldEventState.memories.map(memory => [memory.chain, memory.stage, memory.choice, memory.year, memory.participantIds])
     },
+    worldRules: { selected: activeWorldRuleIds(), difficulty: worldRuleDifficulty(), code: buildWorldChallengeCode(worldSeed), score: worldChallengeScore() },
     history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries, marriages: worldStats.marriages || 0, successions: worldStats.successions || 0, successionCrises: worldStats.successionCrises || 0, politicalResolutions: worldStats.politicalResolutions || 0, politicalCrises: worldStats.politicalCrises || 0, dynamicEventsResolved: worldStats.dynamicEventsResolved || 0, artifactsFound: worldStats.artifactsFound || 0, artifactTransfers: worldStats.artifactTransfers || 0, artifactsLost: worldStats.artifactsLost || 0, historicalScars: worldStats.historicalScars || 0, scarsRestored: worldStats.scarsRestored || 0, wondersCompleted: worldStats.wondersCompleted || 0, wondersDamaged: worldStats.wondersDamaged || 0, wondersRestored: worldStats.wondersRestored || 0, crisesResolved: worldStats.crisesResolved || 0, crisisLegacies: worldStats.crisisLegacies || 0, challengesCompleted: worldStats.challengesCompleted || 0 }
   };
 }
@@ -2219,6 +2223,13 @@ globalThis.RealmDebug = Object.freeze({
   },
   snapshot: debugSnapshot,
   setRandomDisasters: enabled => { randomDisastersEnabled = Boolean(enabled); return randomDisastersEnabled; },
+  setWorldRules: ids => { setWorldRules(ids); return debugSnapshot(); },
+  worldRuleCatalog: () => Object.fromEntries(Object.entries(worldRuleDefs).map(([id, definition]) => [id, { name: definition.name, points: definition.points, modifiers: { ...(definition.modifiers || {}) }, multipliers: { ...(definition.multipliers || {}) } }])),
+  applyWorldRuleStep: () => { worldRuleSimulationStep(); return debugSnapshot(); },
+  challengeCode: (seed = worldSeed, ids = activeWorldRuleIds()) => buildWorldChallengeCode(seed, ids),
+  parseChallengeCode: code => parseWorldChallengeCode(code),
+  archiveCurrentWorld: () => { archiveCurrentWorld("manual", false); return readCrossWorldArchive(); },
+  crossWorldArchive: () => readCrossWorldArchive(),
   resolvePolitics: (kingdomId, action = "compromise") => { resolvePoliticalIssue(Number(kingdomId), action, false); return debugSnapshot(); },
   triggerPoliticsCrisis: (kingdomId, factionId) => { const kingdom = getKingdom(Number(kingdomId)); if (kingdom && factionDefs[factionId]) triggerFactionCrisis(kingdom, factionId); return debugSnapshot(); },
   regionalEventCatalog: () => Object.fromEntries(Object.entries(dynamicEventDefs).map(([id, definition]) => [id, { name: definition.name, focus: definition.focus, conditions: { ...definition.conditions }, choices: definition.choices.map(choice => choice.id) }])),
@@ -2257,4 +2268,4 @@ document.getElementById("autoSaveToggle").checked = autoSaveEnabled;
 document.getElementById("randomDisasterToggle").checked = randomDisastersEnabled;
 document.getElementById("disasterFrequency").value = disasterFrequency;
 document.getElementById("worldSeedInput").value = createRandomSeed();
-initializeExperienceUI(); initializeLegacyUI(); resizeCanvas(); generateWorld(document.getElementById("worldSeedInput").value); maybeStartTutorial(); requestAnimationFrame(frame);
+initializeExperienceUI(); initializeLegacyUI(); initializeWorldChallengeUI(); resizeCanvas(); generateWorld(document.getElementById("worldSeedInput").value); maybeStartTutorial(); requestAnimationFrame(frame);

@@ -62,6 +62,18 @@ input[type="range"] { width: 100%; margin: 10px 0 0; accent-color: var(--gold); 
 .seed-controls button { border: 1px solid #77643c; border-radius: 3px; color: #e1c66f; background: #30291a; cursor: pointer; }
 .seed-controls button:hover { filter: brightness(1.2); }
 .seed-controls small { color: var(--muted); font-size: 8px; line-height: 1.35; }
+.challenge-rules { display: grid; gap: 6px; margin-top: 8px; padding: 9px; border: 1px solid #554d35; border-radius: 7px; color: #c9b895; background: linear-gradient(145deg, #202219, #141811); font-size: 9px; }
+.challenge-rules-title { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
+.challenge-rules-title b { color: #e5cb79; }
+.challenge-rules-title small { color: var(--muted); font-size: 7px; text-align: right; }
+.world-rule-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.world-rule { display: flex; align-items: center; justify-content: space-between; min-width: 0; padding: 5px; border: 1px solid #4e543e; border-radius: 5px; color: #b8b99f; background: #171b15; cursor: pointer; font-size: 7px; }
+.world-rule span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.world-rule b { color: #a49159; }
+.world-rule.active { border-color: #d3aa50; color: #ffe5a0; background: linear-gradient(145deg, #3b321d, #211e15); box-shadow: inset 0 0 10px #d6aa3d25; }
+.challenge-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 3px; }
+.challenge-code-row input { min-width: 0; padding: 5px; border: 1px solid #555a42; border-radius: 4px; color: #d9d1aa; background: #11150f; font-family: Consolas, monospace; font-size: 7px; }
+.challenge-code-row button { padding: 4px 5px; border: 1px solid #6d613f; border-radius: 4px; color: #dbc478; background: #2b2618; cursor: pointer; font-size: 7px; }
 .separator { margin: 14px 0; border-top: 1px solid var(--line); }
 .wide-btn { width: 100%; margin-bottom: 7px; padding: 9px; border: 1px solid #bd9142; border-radius: 4px; background: #a3772e; cursor: pointer; }
 .wide-btn:hover { filter: brightness(1.15); }
@@ -245,7 +257,7 @@ footer { display: flex; align-items: center; justify-content: space-between; pad
 #saveStatus { color: #858a73; }
 #performanceStat { color: #788e72; font-variant-numeric: tabular-nums; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: #090b07cc; backdrop-filter: blur(3px); }
-.archive-modal { width: min(680px, 88vw); padding: 20px; border: 1px solid #777b50; border-radius: 8px; background: linear-gradient(145deg, #303526, #1c2017); box-shadow: 0 18px 70px #000c; }
+.archive-modal { overflow-y: auto; width: min(760px, 90vw); max-height: 88vh; padding: 20px; border: 1px solid #777b50; border-radius: 8px; background: linear-gradient(145deg, #303526, #1c2017); box-shadow: 0 18px 70px #000c; }
 .modal-title { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 15px; }
 .modal-title h2 { font-size: 22px; }
 .modal-title p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
@@ -264,6 +276,16 @@ footer { display: flex; align-items: center; justify-content: space-between; pad
 .wide-btn.small { display: inline-block; width: auto; margin: 0; padding: 7px 10px; font-size: 10px; }
 .file-label { cursor: pointer; }
 .file-label input { display: none; }
+.cross-world-archive { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.cross-world-archive > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cross-world-archive h3 { margin: 0; border: 0; }
+.cross-world-list { display: grid; gap: 6px; margin-top: 8px; }
+.cross-world-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid #4f553e; border-radius: 7px; background: #161b14; }
+.cross-world-entry b, .cross-world-entry span, .cross-world-entry small { display: block; }
+.cross-world-entry b { color: #e5d39d; font-size: 10px; }
+.cross-world-entry span { margin-top: 2px; color: #b9b7a0; font-size: 8px; }
+.cross-world-entry small { margin-top: 2px; color: var(--muted); font-size: 7px; }
+.cross-world-entry strong { color: #efc75d; font-size: 18px; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 1200px) {
   .workspace { grid-template-columns: 190px 1fr 220px; }
