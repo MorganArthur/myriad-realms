@@ -122,6 +122,10 @@
         <div id="achievementList" class="achievement-list"></div>
         <h3>时代事件</h3>
         <div id="worldEventSummary"><p class="muted">世界暂时平静</p></div>
+        <h3>世界遗产</h3>
+        <div id="legacyList" class="legacy-list"><p class="muted">遗迹与奇观尚未进入文明视野</p></div>
+        <h3>危机与挑战</h3>
+        <div id="crisisList" class="crisis-list"><p class="muted">世界暂时平静</p></div>
         <h3>文明发展</h3>
         <div id="developmentList" class="development-list"><p class="muted">文明尚未点燃时代火种</p></div>
         <h3>王朝与人物</h3>
@@ -182,6 +186,9 @@
   <section id="worldEventModal" class="modal-backdrop world-event-backdrop" role="dialog" aria-modal="true" aria-label="世界事件抉择" hidden>
     <div id="worldEventContent" class="world-event-modal"></div>
   </section>
+  <section id="legacyEventModal" class="modal-backdrop world-event-backdrop" role="dialog" aria-modal="true" aria-label="动态事件抉择" hidden>
+    <div id="legacyEventContent" class="world-event-modal legacy-event-modal"></div>
+  </section>
   <section id="codexModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="codexTitle" hidden>
     <div class="codex-modal">
       <div class="modal-title"><div><h2 id="codexTitle">世界百科</h2><p>种族、生态、建筑、灾害与模拟规则</p></div><button id="closeCodexBtn" class="modal-close" aria-label="关闭百科">×</button></div>
@@ -201,6 +208,7 @@
   <script src="long-term-system.js"></script>
   <script src="dynasty-system.js"></script>
   <script src="politics-system.js"></script>
+  <script src="legacy-system.js"></script>
   <script src="game-ui.js"></script>
   <script src="game-persistence.js"></script>
   <script src="game.js"></script>

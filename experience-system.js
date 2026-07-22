@@ -330,6 +330,7 @@ function worldEventStep() {
     if (year - worldEventState.active.startedYear > 2.5) { const stage = eventStage(); resolveWorldEvent(stage.choices[experienceEngine.randi(0, stage.choices.length - 1)].id, true); }
     return;
   }
+  if (typeof legacyState !== "undefined" && (legacyState.activeEvent || legacyState.activeCrisis)) return;
   if (worldEventState.pending && year >= worldEventState.pending.availableYear) { activateWorldEvent(worldEventState.pending.chain, worldEventState.pending.stage); return; }
   if (!worldEventState.pending && year >= worldEventState.nextYear) {
     const ids = Object.keys(worldEventChains), chain = ids[experienceEngine.randi(0, ids.length - 1)]; activateWorldEvent(chain, worldEventChains[chain].first);
@@ -430,7 +431,7 @@ function renderActiveWorldEvent() {
 
 function inspectHero(heroId) {
   const hero = heroes.find(candidate => candidate.id === heroId); if (!hero) return;
-  selectedHeroId = hero.id; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null;
+  selectedHeroId = hero.id; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedLegacyId = null;
   const person = getPerson(hero.personId), kingdom = getKingdom(hero.kingdomId), def = heroArchetypes[hero.archetype], box = document.getElementById("selectionCard");
   box.classList.remove("empty");
   box.innerHTML = `<h4 style="color:${def.color}">${def.icon} ${hero.title}${hero.name}</h4><div class="detail-row"><span>所属文明</span><b>${kingdom?.name || "失落文明"}</b></div><div class="detail-row"><span>状态 / 等级</span><b>${hero.status === "active" ? "活跃" : `传奇 · 纪元 ${hero.fallenYear || "?"}`} / ${hero.level}</b></div><div class="detail-row"><span>声望 / 胜绩</span><b>${Math.floor(hero.renown)} / ${hero.victories}</b></div><div class="detail-row"><span>现职</span><b>${person ? (professionDefs[person.profession]?.name || unitDefs[person.unitType]?.name || "居民") : "历史人物"}</b></div><p class="muted">${hero.status === "active" ? def.effect : hero.legacy || "事迹被编入世界史"}</p>`;
@@ -466,6 +467,9 @@ function renderCodex(tab = "peoples") {
       { icon: "♚", title: "王朝与继承", text: "四种继承法会依据血缘、年资、声望或军功选择统治者；幼主由摄政辅政，争议继承会动摇国家。" },
       { icon: "♥", title: "人物关系", text: "居民拥有姓名、性别、亲代、配偶、子女、亲近、信任、竞争和共同记忆，关系会延续至后代。" },
       { icon: "⚖", title: "派系与议会", text: "宫廷、民生、行会、信仰和军功五派争夺席位并提出政策议案；支持、妥协或否决都会留下长期政治后果。" },
+      { icon: "🗿", title: "遗迹与神器", text: "斥候会发现地图遗迹，文明持续考察后可寻得具有长期效果的神器。" },
+      { icon: "🏗", title: "世界奇观", text: "进入城邦纪的文明能够投入木石、国库和工程劳力，分阶段建造独一无二的奇观。" },
+      { icon: "🛡", title: "危机与挑战", text: "全球危机要求各文明共同响应；轮换世界挑战则提供有期限的长期目标与声望奖励。" },
       { icon: "📜", title: "世界事件链", text: "重大事件分阶段展开，抉择会改变资源、研究、社会和外交。" },
       { icon: "🗺", title: "地图模式", text: "自然、政治、肥力、人口和外交视图从不同维度解释同一世界。" },
       { icon: "💾", title: "确定性存档", text: "世界种子、随机状态、人物家谱、王朝和派系政治共同保存，可从同一时间线继续演化。" }

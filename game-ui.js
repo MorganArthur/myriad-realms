@@ -53,15 +53,17 @@ function personInspectionHtml(person) {
 
 function inspectPersonById(personId) {
   const person = getPerson(personId); if (!person) return;
-  selectedGrid = { x: Math.floor(person.x), y: Math.floor(person.y) }; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null;
+  selectedGrid = { x: Math.floor(person.x), y: Math.floor(person.y) }; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null; selectedLegacyId = null;
   const box = document.getElementById("selectionCard"); box.classList.remove("empty"); box.innerHTML = personInspectionHtml(person);
 }
 
 function inspectAt(x, y) {
   selectedGrid = { x: Math.floor(x), y: Math.floor(y) };
-  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null;
+  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null; selectedLegacyId = null;
   const person = people.find(p => Math.hypot(p.x - x, p.y - y) < 1.5);
   const caravan = caravans.find(candidate => Math.hypot(candidate.x - x, candidate.y - y) < 1.35);
+  const legacyWonder = wonders.find(candidate => Math.hypot(candidate.x - x, candidate.y - y) < 1.4);
+  const legacySite = legacySites.find(candidate => Math.hypot(candidate.x - x, candidate.y - y) < 1.15);
   const animal = animals.find(a => Math.hypot(a.x - x, a.y - y) < 1.5);
   let inspectedStructure = null, inspectedStructureVillage = null, inspectedDistance = Infinity;
   for (const candidateVillage of villages) for (const structure of candidateVillage.structures || []) {
@@ -76,6 +78,8 @@ function inspectAt(x, y) {
   } else if (caravan) {
     const route = getTradeRoute(caravan.routeId), source = getVillage(caravan.fromVillage), destination = getVillage(caravan.toVillage), cargo = tradeResourceDefs[caravan.resource], progress = route?.path?.length > 1 ? caravan.pathIndex / (route.path.length - 1) * 100 : 0;
     box.innerHTML = `<h4>${route?.mode === "sea" ? "⛵" : "🐴"} 商队 #${caravan.id}</h4><div class="detail-row"><span>路线</span><b>${source?.name} → ${destination?.name}</b></div><div class="detail-row"><span>货物</span><b>${cargo?.icon} ${cargo?.name} ${Math.floor(caravan.amount)}</b></div><div class="detail-row"><span>交换货物</span><b>${caravan.returnResource ? `${tradeResourceDefs[caravan.returnResource].icon} ${tradeResourceDefs[caravan.returnResource].name} ${Math.floor(caravan.returnAmount)}` : "国内调拨"}</b></div><div class="detail-row"><span>状态</span><b>${route?.status === "blockaded" ? "突破封锁" : "运输中"}</b></div><div class="need-list">${needMeter("行程", progress)}${needMeter("商队安全", caravan.hp)}</div>`;
+  } else if (legacyWonder || legacySite) {
+    inspectLegacyEntity(legacyWonder ? `wonder:${legacyWonder.id}` : `ruin:${legacySite.id}`); return;
   } else if (animal) {
     const def = animalDefs[animal.species];
     box.innerHTML = `<h4>${def.icon} ${def.name} #${animal.id}</h4><div class="detail-row"><span>年龄</span><b>${animal.age.toFixed(1)} 岁</b></div><div class="detail-row"><span>生命</span><b>${Math.max(0, Math.floor(animal.health))}</b></div><div class="detail-row"><span>饱食度</span><b>${Math.floor(animal.hunger)}%</b></div><div class="detail-row"><span>食性</span><b>${def.diet === "herbivore" ? "草食" : "捕食"}</b></div>`;
@@ -93,7 +97,7 @@ function inspectAt(x, y) {
 
 function inspectKingdom(kingdomId) {
   const kingdom = getKingdom(kingdomId); if (!kingdom) return;
-  selectedKingdomId = kingdomId; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null;
+  selectedKingdomId = kingdomId; selectedTradeRouteId = null; selectedArmyId = null; selectedHeroId = null; selectedLegacyId = null;
   const box = document.getElementById("selectionCard"), citizens = peopleOfKingdom(kingdomId), realmVillages = villagesOfKingdom(kingdomId), race = raceDefs[kingdom.race] || raceDefs.human;
   const raceCounts = Object.fromEntries(Object.keys(raceDefs).map(key => [key, 0]));
   let soldiers = 0;
@@ -107,12 +111,12 @@ function inspectKingdom(kingdomId) {
   const relations = Object.entries(kingdom.relations || {}).map(([id, r]) => `${getKingdom(Number(id))?.name || "未知"}：${statusLabels[r.status]}`).join(" · ") || "尚无外交关系";
   const traditions = kingdom.culture.traditions.map(id => `<span class="tradition-chip" title="${traditionDefs[id].effect}">${traditionDefs[id].icon} ${traditionDefs[id].name}</span>`).join("") || `<span class="muted">传统正在形成</span>`;
   box.classList.remove("empty");
-  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>政体 / 主体种族</span><b>${government.icon} ${government.name} · ${race.name}</b></div><div class="detail-row"><span>人口 / 士兵 / 军团</span><b>${citizens.length} / ${soldiers} / ${realmArmies.length}</b></div><div class="detail-row"><span>幸福 / 合法性 / 动乱</span><b>${Math.round(happiness)} / ${Math.round(kingdom.legitimacy)} / ${Math.round(kingdom.unrest)}</b></div><div class="detail-row"><span>国库 / 本期税收</span><b>¤ ${Math.floor(kingdom.treasury || 0)} / +${(kingdom.lastTaxRevenue || 0).toFixed(1)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><div class="need-list">${needMeter("政权合法性", kingdom.legitimacy)}${needMeter("社会动乱", kingdom.unrest)}</div>${dynastyDetailHtml(kingdom)}${politicsDetailHtml(kingdom)}${developmentDetailHtml(kingdom)}<h3>${ethos.icon} ${kingdom.culture.name}</h3><div class="detail-row"><span>文化精神 / 影响力</span><b>${ethos.name} · ${Math.floor(kingdom.culture.influence)}</b></div><div class="culture-values">${cultureValuesHtml(kingdom)}</div><div class="tradition-list">${traditions}</div><h3>科技研究 · 累计 ${totalTechnologyLevel(kingdom)} 级</h3><div class="technology-grid">${technologyControlsHtml(kingdom)}</div><p class="muted">当前研究效率 +${kingdom.technology.researchRate.toFixed(1)} / 周期；点击科技可锁定研究方向 10 纪元。</p><h3>国家政策</h3><div class="policy-controls">${policyControlHtml(kingdom, "tax", "税制")}${policyControlHtml(kingdom, "welfare", "民生")}${policyControlHtml(kingdom, "military", "军事")}</div><div class="intervention-row"><button data-unrest-action="calm">安抚民心</button><button class="danger" data-unrest-action="incite">煽动叛乱</button></div><h3>社会阶层</h3><div class="class-list">${socialClassHtml(classes)}</div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
+  box.innerHTML = `<h4><span style="color:${kingdom.color}">◆</span> ${race.icon} ${kingdom.name}${kingdomAtWar(kingdomId) ? '<i class="war-badge">战争中</i>' : ""}${kingdom.famine ? '<i class="famine-badge">饥荒</i>' : ""}</h4><div class="detail-row"><span>政体 / 主体种族</span><b>${government.icon} ${government.name} · ${race.name}</b></div><div class="detail-row"><span>人口 / 士兵 / 军团</span><b>${citizens.length} / ${soldiers} / ${realmArmies.length}</b></div><div class="detail-row"><span>幸福 / 合法性 / 动乱</span><b>${Math.round(happiness)} / ${Math.round(kingdom.legitimacy)} / ${Math.round(kingdom.unrest)}</b></div><div class="detail-row"><span>国库 / 本期税收</span><b>¤ ${Math.floor(kingdom.treasury || 0)} / +${(kingdom.lastTaxRevenue || 0).toFixed(1)}</b></div><div class="detail-row"><span>人口构成</span><b>${demographics}</b></div><div class="detail-row"><span>聚落 / 建筑</span><b>${realmVillages.length} / ${structures.length}</b></div><div class="detail-row"><span>道路 / 城墙</span><b>${roads} / ${walls}</b></div><div class="detail-row"><span>粮食</span><b>🌾 ${Math.floor(kingdom.resources.food)}${kingdom.famine ? ` · 饥荒 ${Math.round(kingdom.famineLevel)}%` : ""}</b></div><div class="detail-row"><span>木材 / 石料</span><b>🪵 ${Math.floor(kingdom.resources.wood)} · 🪨 ${Math.floor(kingdom.resources.stone)}</b></div><div class="need-list">${needMeter("政权合法性", kingdom.legitimacy)}${needMeter("社会动乱", kingdom.unrest)}</div>${dynastyDetailHtml(kingdom)}${politicsDetailHtml(kingdom)}${legacyDetailHtml(kingdom)}${developmentDetailHtml(kingdom)}<h3>${ethos.icon} ${kingdom.culture.name}</h3><div class="detail-row"><span>文化精神 / 影响力</span><b>${ethos.name} · 影响 ${Math.floor(kingdom.culture.influence)}</b></div><div class="culture-values">${cultureValuesHtml(kingdom)}</div><div class="tradition-list">${traditions}</div><h3>科技研究 · 累计 ${totalTechnologyLevel(kingdom)} 级</h3><div class="technology-grid">${technologyControlsHtml(kingdom)}</div><p class="muted">当前研究效率 +${kingdom.technology.researchRate.toFixed(1)} / 周期；点击科技可锁定研究方向 10 纪元。</p><h3>国家政策</h3><div class="policy-controls">${policyControlHtml(kingdom, "tax", "税制")}${policyControlHtml(kingdom, "welfare", "民生")}${policyControlHtml(kingdom, "military", "军事")}</div><div class="intervention-row"><button data-unrest-action="calm">安抚民心</button><button class="danger" data-unrest-action="incite">煽动叛乱</button></div><h3>社会阶层</h3><div class="class-list">${socialClassHtml(classes)}</div><h3>职业构成</h3><div class="profession-list">${workforceHtml(jobs)}</div><p class="muted">${relations}</p>`;
 }
 
 function inspectTradeRoute(routeId) {
   const route = getTradeRoute(routeId); if (!route) { selectedTradeRouteId = null; return; }
-  selectedKingdomId = null; selectedTradeRouteId = routeId; selectedArmyId = null; selectedHeroId = null;
+  selectedKingdomId = null; selectedTradeRouteId = routeId; selectedArmyId = null; selectedHeroId = null; selectedLegacyId = null;
   const from = getVillage(route.fromVillage), to = getVillage(route.toVillage), inTransit = caravans.find(caravan => caravan.routeId === route.id), box = document.getElementById("selectionCard");
   const status = route.status === "active" ? "畅通" : route.status === "blockaded" ? "战争封锁" : "设施中断";
   box.classList.remove("empty");
@@ -121,7 +125,7 @@ function inspectTradeRoute(routeId) {
 
 function inspectArmy(armyId) {
   const army = getArmy(armyId); if (!army) { selectedArmyId = null; return; }
-  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = armyId; selectedHeroId = null;
+  selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = armyId; selectedHeroId = null; selectedLegacyId = null;
   const members = armySoldiers(army), general = members.find(person => person.id === army.generalId), kingdom = getKingdom(army.kingdomId), target = getVillage(army.targetVillageId), rally = getVillage(army.rallyVillageId), units = unitCountsFor(members), box = document.getElementById("selectionCard");
   const unitLine = Object.entries(unitDefs).filter(([type]) => units[type] > 0).map(([type, def]) => `${def.icon}${def.name} ${units[type]}`).join(" · ") || "暂无士兵";
   const statusLabels = { assembling: "集结", garrison: "驻防", advance: "推进", battle: "交战", siege: "围城", retreat: "撤退" };
@@ -283,6 +287,7 @@ function render() {
   }
   renderTradeRoutes(m);
   renderStructures(m);
+  renderLegacyMarkers(ctx, m);
   renderDisasters(m);
   for (const animal of animals) {
     const sx = m.ox + (animal.x + .5) * m.size, sy = m.oy + (animal.y + .5) * m.size;
@@ -395,7 +400,8 @@ function updateUI() {
     ["爆发战争", worldStats.warsStarted], ["结束战争", worldStats.warsEnded], ["天灾降临", worldStats.disastersTriggered], ["安然度过", worldStats.disastersSurvived],
     ["英雄涌现", worldStats.heroesEmerged || 0], ["时代抉择", worldStats.worldEventsResolved || 0], ["时代跃迁", worldStats.erasReached || 0], ["完成野心", worldStats.ambitionsCompleted || 0],
     ["缔结婚姻", worldStats.marriages || 0], ["权力交接", worldStats.successions || 0], ["继承危机", worldStats.successionCrises || 0],
-    ["议案决议", worldStats.politicalResolutions || 0], ["派系危机", worldStats.politicalCrises || 0]
+    ["议案决议", worldStats.politicalResolutions || 0], ["派系危机", worldStats.politicalCrises || 0], ["动态抉择", worldStats.dynamicEventsResolved || 0],
+    ["探索遗迹", worldStats.ruinsExplored || 0], ["寻得神器", worldStats.artifactsFound || 0], ["完成奇观", worldStats.wondersCompleted || 0], ["化解危机", worldStats.crisesResolved || 0], ["完成挑战", worldStats.challengesCompleted || 0]
   ].map(([label, value]) => `<span>${label}<b>${value}</b></span>`).join("");
   document.getElementById("chronicleList").innerHTML = chronicle.length ? `<p class="chronicle-summary">共 ${chronicle.length} 条记录 · 保留最近 240 条</p>` + chronicle.slice(0, 30).map(entry => `<div class="event ${entry.kind || "event"}"><time>纪元 ${entry.year}</time>${entry.text}</div>`).join("") : `<p class="muted">历史尚未落笔</p>`;
   let sampledMoisture = 0, sampledFertility = 0, climateSamples = 0;
@@ -449,5 +455,5 @@ function updateUI() {
   if (selectedKingdomId !== null) inspectKingdom(selectedKingdomId);
   if (selectedTradeRouteId !== null) inspectTradeRoute(selectedTradeRouteId);
   if (selectedArmyId !== null) inspectArmy(selectedArmyId);
-  renderPoliticsPanels(); renderDynastyPanels(); renderLongTermPanels(); renderExperiencePanels();
+  renderPoliticsPanels(); renderDynastyPanels(); renderLongTermPanels(); renderLegacyPanels(); renderExperiencePanels();
 }

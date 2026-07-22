@@ -34,7 +34,11 @@ const achievementDefs = {
   first_succession: { name: "冠冕相承", icon: "♛", description: "见证第一次统治权交接", points: 15, unlocked: () => (worldStats.successions || 0) >= 1 },
   royal_marriage: { name: "两姓之好", icon: "♥", description: "见证统治家族缔结婚姻", points: 10, unlocked: () => kingdoms.some(kingdom => kingdom.dynasty?.history?.some(entry => entry.type === "marriage")) },
   first_debate: { name: "众议成章", icon: "⚖", description: "见证第一次议会提案得到解决", points: 10, unlocked: () => (worldStats.politicalResolutions || 0) >= 1 },
-  faction_crisis: { name: "暗流涌动", icon: "◆", description: "见证一次派系危机爆发", points: 15, unlocked: () => (worldStats.politicalCrises || 0) >= 1 }
+  faction_crisis: { name: "暗流涌动", icon: "◆", description: "见证一次派系危机爆发", points: 15, unlocked: () => (worldStats.politicalCrises || 0) >= 1 },
+  first_artifact: { name: "古物重光", icon: "✧", description: "从遗迹中寻得第一件神器", points: 15, unlocked: () => (worldStats.artifactsFound || 0) >= 1 },
+  first_wonder: { name: "不朽丰碑", icon: "🏗", description: "完成第一座世界奇观", points: 25, unlocked: () => (worldStats.wondersCompleted || 0) >= 1 },
+  crisis_savior: { name: "力挽狂澜", icon: "🛡", description: "成功化解一次全球危机", points: 25, unlocked: () => (worldStats.crisesResolved || 0) >= 1 },
+  challenge_keeper: { name: "时代应许", icon: "◇", description: "完成一次轮换世界挑战", points: 20, unlocked: () => (worldStats.challengesCompleted || 0) >= 1 }
 };
 const worldGoalDefs = {
   settlement_network: { name: "拓土成邦", description: "建立 6 个聚落", icon: "🏘", target: 6, points: 20, value: () => villages.length },
@@ -75,7 +79,8 @@ function createWorldStats() {
   return {
     births: 0, deaths: 0, villagesFounded: 0, villagesCaptured: 0, buildingsConstructed: 0, buildingsDestroyed: 0,
     tradeDeliveries: 0, tradeVolume: 0, warsStarted: 0, warsEnded: 0, disastersTriggered: 0, disastersSurvived: 0, rebellions: 0,
-    heroesEmerged: 0, worldEventsResolved: 0, ambitionsCompleted: 0, erasReached: 0, successions: 0, successionCrises: 0, marriages: 0, politicalResolutions: 0, politicalCrises: 0,
+    heroesEmerged: 0, worldEventsResolved: 0, dynamicEventsResolved: 0, ambitionsCompleted: 0, erasReached: 0, successions: 0, successionCrises: 0, marriages: 0, politicalResolutions: 0, politicalCrises: 0,
+    ruinsExplored: 0, artifactsFound: 0, wondersCompleted: 0, crisesStarted: 0, crisesResolved: 0, crisesFailed: 0, challengesCompleted: 0,
     peakPopulation: 0, peakVillages: 0, peakKingdoms: 0, peakAnimals: 0
   };
 }
@@ -473,7 +478,7 @@ function generateWorld(seed = document.getElementById("worldSeedInput").value ||
     tiles.push({ type, fertility: type === "forest" ? 1 : type === "grass" ? .75 : .25, biomass, moisture: clamp(moisture[idx(x, y)], .08, .95), temperature: latitudeTemperature - (type === "mountain" ? 8 : 0) + rand(-1.5, 1.5), fire: 0, owner: -1 });
   }
   people = []; animals = []; villages = []; kingdoms = []; events = []; chronicle = []; activeDisasters = []; tradeRoutes = []; caravans = []; armies = []; worldStats = createWorldStats(); worldProgress = createWorldProgress(); year = 1; ticks = 0; climate = { season: "spring", weather: "clear", temperature: 16, rainfall: .72, seasonProgress: 0, weatherUntil: 1.8, nextWeatherYear: 1.8 }; nextPersonId = 1; nextAnimalId = 1; nextVillageId = 1; nextStructureId = 1; nextTradeRouteId = 1; nextCaravanId = 1; nextArmyId = 1; nextDisasterId = 1; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; indexesReady = false; lastAutoSaveYear = 1;
-  resetExperienceState();
+  resetExperienceState(); resetLegacyState();
   camera = { x: 0, y: 0, zoom: 1 };
   const valid = habitableTileIndices();
   const anchors = [];
@@ -502,6 +507,7 @@ function generateWorld(seed = document.getElementById("worldSeedInput").value ||
   updateProfessions();
   for (const kingdom of kingdoms) updateFactionStates(kingdom);
   heroStep(true);
+  initializeLegacyWorld();
   scheduleNextDisaster();
   rebuildWorldIndexes();
   document.getElementById("worldName").textContent = worldNames[randi(0, worldNames.length - 1)];
@@ -1236,7 +1242,7 @@ function simulationStep() {
   const ecologyStride = people.length + animals.length > BALANCE.simulation.adaptiveEcologyThreshold ? 3 : 2;
   regenerateBiomass(); if (ticks % ecologyStride === 0) simulateAnimals(ecologyStride);
   if (ticks % BALANCE.cadence.resources === 0) produceResources();
-  if (ticks % BALANCE.cadence.culture === 0) { dispatchCaravans(); governanceStep(); cultureTechnologyStep(); longTermDevelopmentStep(); dynastySimulationStep(); politicsSimulationStep(); }
+  if (ticks % BALANCE.cadence.culture === 0) { dispatchCaravans(); governanceStep(); cultureTechnologyStep(); longTermDevelopmentStep(); dynastySimulationStep(); politicsSimulationStep(); legacySimulationStep(); }
   if (ticks % BALANCE.cadence.professions === 0) { updateMilitaryRoles(); updateProfessions(); }
   if (ticks % BALANCE.cadence.diplomacy === 0) { diplomacyStep(); updateTradeRoutes(); }
   if (ticks % BALANCE.cadence.colonies === 0) attemptColonies();
@@ -2190,9 +2196,10 @@ function debugSnapshot() {
     development: activeKingdoms.map(kingdom => [kingdom.id, kingdom.development?.era || "kindling", kingdom.development?.ambition || null, kingdom.development?.completedAmbitions?.map(entry => entry.id) || []]),
     dynasties: activeKingdoms.map(kingdom => [kingdom.id, kingdom.dynasty?.name || null, kingdom.dynasty?.rulerId || null, kingdom.dynasty?.heirId || null, kingdom.dynasty?.law || null, kingdom.dynasty?.sequence || 0, Boolean(kingdom.dynasty?.disputed)]), diplomacy, randomState: getRandomState(),
     politics: activeKingdoms.map(kingdom => [kingdom.id, kingdom.politics?.dominantFaction || null, round3(kingdom.politics?.cohesion || 0), round3(kingdom.politics?.authority || 0), kingdom.politics?.activeIssue ? [kingdom.politics.activeIssue.faction, kingdom.politics.activeIssue.domain, kingdom.politics.activeIssue.proposed] : null, Object.entries(kingdom.politics?.factions || {}).map(([id, faction]) => [id, round3(faction.support), round3(faction.influence), round3(faction.radicalization), faction.seats])]),
+    legacy: { sites: legacySites.map(site => [site.id, site.type, site.status, round3(site.progress), site.kingdomId, site.artifactId]), artifacts: artifacts.map(artifact => [artifact.id, artifact.type, artifact.kingdomId, artifact.siteId]), wonders: wonders.map(wonder => [wonder.id, wonder.type, wonder.kingdomId, wonder.status, round3(wonder.progress)]), activeEvent: legacyState.activeEvent ? [legacyState.activeEvent.id, legacyState.activeEvent.kingdomId] : null, activeCrisis: legacyState.activeCrisis ? [legacyState.activeCrisis.id, round3(legacyState.activeCrisis.progress), round3(legacyState.activeCrisis.deadline)] : null, challenge: legacyState.challenge ? [legacyState.challenge.id, round3(legacyState.challenge.progress), round3(legacyState.challenge.deadline)] : null },
     heroes: heroes.filter(hero => hero.status === "active").map(hero => [hero.id, hero.kingdomId, hero.level, round3(hero.renown), hero.victories]),
     worldEvents: worldEventState.history.map(entry => [entry.chain, entry.stage, entry.choice, entry.year]),
-    history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries, marriages: worldStats.marriages || 0, successions: worldStats.successions || 0, successionCrises: worldStats.successionCrises || 0, politicalResolutions: worldStats.politicalResolutions || 0, politicalCrises: worldStats.politicalCrises || 0 }
+    history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries, marriages: worldStats.marriages || 0, successions: worldStats.successions || 0, successionCrises: worldStats.successionCrises || 0, politicalResolutions: worldStats.politicalResolutions || 0, politicalCrises: worldStats.politicalCrises || 0, dynamicEventsResolved: worldStats.dynamicEventsResolved || 0, artifactsFound: worldStats.artifactsFound || 0, wondersCompleted: worldStats.wondersCompleted || 0, crisesResolved: worldStats.crisesResolved || 0, challengesCompleted: worldStats.challengesCompleted || 0 }
   };
 }
 globalThis.RealmDebug = Object.freeze({
@@ -2207,6 +2214,12 @@ globalThis.RealmDebug = Object.freeze({
   setRandomDisasters: enabled => { randomDisastersEnabled = Boolean(enabled); return randomDisastersEnabled; },
   resolvePolitics: (kingdomId, action = "compromise") => { resolvePoliticalIssue(Number(kingdomId), action, false); return debugSnapshot(); },
   triggerPoliticsCrisis: (kingdomId, factionId) => { const kingdom = getKingdom(Number(kingdomId)); if (kingdom && factionDefs[factionId]) triggerFactionCrisis(kingdom, factionId); return debugSnapshot(); },
+  triggerLegacyEvent: id => { activateDynamicEvent(id); return debugSnapshot(); },
+  resolveLegacyEvent: choice => { resolveDynamicEvent(choice, false); return debugSnapshot(); },
+  triggerWorldCrisis: type => { triggerWorldCrisis(type); return debugSnapshot(); },
+  interveneWorldCrisis: action => { interveneWorldCrisis(action); return debugSnapshot(); },
+  beginWonder: kingdomId => { beginWonderProject(getKingdom(Number(kingdomId)), true); return debugSnapshot(); },
+  startChallenge: id => { legacyState.challenge = null; startWorldChallenge(id); return debugSnapshot(); },
   saveData: buildSaveData,
   restore: save => { restoreWorld(structuredClone(save)); return debugSnapshot(); }
 });
@@ -2217,4 +2230,4 @@ document.getElementById("autoSaveToggle").checked = autoSaveEnabled;
 document.getElementById("randomDisasterToggle").checked = randomDisastersEnabled;
 document.getElementById("disasterFrequency").value = disasterFrequency;
 document.getElementById("worldSeedInput").value = createRandomSeed();
-initializeExperienceUI(); resizeCanvas(); generateWorld(document.getElementById("worldSeedInput").value); maybeStartTutorial(); requestAnimationFrame(frame);
+initializeExperienceUI(); initializeLegacyUI(); resizeCanvas(); generateWorld(document.getElementById("worldSeedInput").value); maybeStartTutorial(); requestAnimationFrame(frame);

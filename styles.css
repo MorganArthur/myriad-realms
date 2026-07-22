@@ -527,6 +527,46 @@ button.world-event-summary { cursor: pointer; }
 .faction-meter .radical { background: #ca5f4e; }
 .event.politics::before { background: #6eafd0; box-shadow: 0 0 8px #6eafd0; }
 
+/* v0.16 dynamic events, ruins, artifacts, wonders and world crises */
+.legacy-list, .crisis-list { display: grid; gap: 6px; }
+.legacy-site { width: 100%; padding: 7px 8px; border: 1px solid #495044; border-left: 3px solid var(--legacy-color); border-radius: 7px; color: #d2cfb6; background: linear-gradient(145deg, #1b211a, #121612); text-align: left; cursor: pointer; }
+.legacy-site:hover, .wonder-project:hover { transform: translateX(2px); filter: brightness(1.12); }
+.legacy-site.hidden { opacity: .72; filter: saturate(.45); }
+.legacy-site.complete, .legacy-site.explored { box-shadow: inset 0 0 12px color-mix(in srgb, var(--legacy-color) 16%, transparent); }
+.legacy-site b, .legacy-site span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legacy-site b { color: color-mix(in srgb, var(--legacy-color) 72%, #fff0ba); font-size: 9px; }
+.legacy-site span { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.legacy-site > i, .wonder-project > i, .world-crisis > i, .world-challenge > i { display: block; overflow: hidden; height: 3px; margin-top: 5px; border-radius: 3px; background: #30352d; }
+.legacy-site > i em, .wonder-project > i em, .world-crisis > i em, .world-challenge > i em { display: block; height: 100%; background: var(--legacy-color, var(--wonder-color, var(--crisis-color, #c5a65d))); }
+.artifact-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+.artifact-chip { display: inline-flex; padding: 4px 6px; border: 1px solid color-mix(in srgb, var(--artifact-color) 60%, #4e503f); border-radius: 999px; color: var(--artifact-color); background: color-mix(in srgb, var(--artifact-color) 8%, #171b15); font-size: 8px; }
+.wonder-project { width: 100%; margin-top: 6px; padding: 7px; border: 1px solid color-mix(in srgb, var(--wonder-color) 60%, #4d5041); border-left: 3px solid var(--wonder-color); border-radius: 7px; color: #d6d1b8; background: #171c16; text-align: left; cursor: pointer; }
+.wonder-project b, .wonder-project span { display: block; }
+.wonder-project b { color: var(--wonder-color); font-size: 9px; }
+.wonder-project span { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.legacy-event-summary, .legacy-next-event { width: 100%; padding: 7px 8px; border: 1px solid #555944; border-radius: 7px; color: #d5ca9e; background: linear-gradient(145deg, #25251a, #151712); text-align: left; }
+.legacy-event-summary { border-color: #9a7a42; cursor: pointer; animation: eventPulse 2.2s infinite; }
+.legacy-event-summary b, .legacy-event-summary span, .legacy-next-event b, .legacy-next-event span { display: block; }
+.legacy-event-summary b, .legacy-next-event b { font-size: 9px; }
+.legacy-event-summary span, .legacy-next-event span { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.world-crisis { padding: 8px; border: 1px solid color-mix(in srgb, var(--crisis-color) 68%, #4b4e40); border-left: 3px solid var(--crisis-color); border-radius: 7px; background: linear-gradient(145deg, color-mix(in srgb, var(--crisis-color) 9%, #211d1a), #151412); }
+.world-crisis > b { color: var(--crisis-color); font-size: 10px; }
+.world-crisis p { margin: 4px 0; color: #c8c2aa; font-size: 8px; line-height: 1.45; }
+.world-crisis small { color: var(--muted); font-size: 7px; }
+.world-crisis > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px; }
+.world-crisis button { padding: 5px 2px; border: 1px solid #5b5e4a; border-radius: 4px; color: #c8c2aa; background: #23251d; cursor: pointer; font-size: 7px; }
+.world-crisis button:hover { border-color: var(--crisis-color); color: #fff0c5; }
+.world-challenge { padding: 7px 8px; border: 1px solid #625b3f; border-left: 3px solid #c2a558; border-radius: 7px; background: linear-gradient(145deg, #252318, #151612); }
+.world-challenge b, .world-challenge span, .world-challenge small { display: block; }
+.world-challenge b { color: #e2c873; font-size: 9px; }
+.world-challenge span { margin-top: 3px; color: #bdb8a0; font-size: 8px; }
+.world-challenge small { margin-top: 3px; color: var(--muted); font-size: 7px; }
+.legacy-event-modal { border-top-color: #a889cf; }
+.event.legacy::before { background: #9c88d0; box-shadow: 0 0 8px #9c88d0; }
+.event.wonder::before { background: #dfa65f; box-shadow: 0 0 8px #dfa65f; }
+.event.crisis::before { background: #d45f55; box-shadow: 0 0 8px #d45f55; }
+.event.challenge::before { background: #d4bc62; box-shadow: 0 0 8px #d4bc62; }
+
 @keyframes eventPulse { 0%, 100% { box-shadow: 0 0 0 #d6a84a00; } 50% { box-shadow: 0 0 16px #d6a84a42; } }
 @media (max-width: 1280px) {
   .topbar { gap: 10px; }
