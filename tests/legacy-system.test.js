@@ -127,11 +127,11 @@ test("全球危机可通过跨文明干预成功化解", () => {
   assert.equal(snapshot.history.crisesResolved, 1);
 });
 
-test("v20 存档无损保存遗迹、神器、奇观、危机与挑战状态", () => {
+test("v21 存档无损保存遗迹、神器、奇观、危机与挑战状态", () => {
   const { debug } = createWorldRuntime();
   debug.generate("legacy-save"); debug.setRandomDisasters(false); debug.step(900); debug.beginWonder(0); debug.triggerWorldCrisis("red_miasma");
   const before = plain(debug.snapshot().legacy), save = structuredClone(debug.saveData());
-  assert.equal(save.version, 20);
+  assert.equal(save.version, 21);
   assert.equal(save.legacySites.length, 6);
   assert.ok(save.legacyState);
   debug.restore(save);
@@ -146,7 +146,7 @@ test("v19 存档会补全神器持有、耐久与奇观耐久字段", () => {
   for (const wonder of save.wonders) for (const field of ["hp", "maxHp", "damageHistory"]) delete wonder[field];
   snapshot = debug.restore(save);
   assert.equal(snapshot.legacy.artifacts[0][4], "kingdom"); assert.equal(snapshot.legacy.artifacts[0][6], "held"); assert.equal(snapshot.legacy.artifacts[0][7], 100);
-  assert.equal(snapshot.legacy.wonders[0][5], 300); assert.equal(snapshot.legacy.wonders[0][6], 300); assert.equal(debug.saveData().version, 20);
+  assert.equal(snapshot.legacy.wonders[0][5], 300); assert.equal(snapshot.legacy.wonders[0][6], 300); assert.equal(debug.saveData().version, 21);
 });
 
 test("v17 旧档会补全遗迹、遗产状态与首个轮换挑战", () => {
@@ -159,5 +159,5 @@ test("v17 旧档会补全遗迹、遗产状态与首个轮换挑战", () => {
   assert.equal(snapshot.legacy.sites.length, 6);
   assert.equal(snapshot.legacy.artifacts.length, 0);
   assert.equal(snapshot.legacy.challenge[0], "relic_seekers");
-  assert.equal(debug.saveData().version, 20);
+  assert.equal(debug.saveData().version, 21);
 });

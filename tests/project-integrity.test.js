@@ -132,6 +132,15 @@ test("历史伤痕、神器流转和奇观耐久连接真实历史钩子", () =>
   assert.match(experience, /recordHeroLegacy\(hero, person\)/);
 });
 
+test("六类后期危机拥有永久结局、持续修正与地形后果", () => {
+  assert.equal([...legacy.matchAll(/^\s{2}(ashen_winter|red_miasma|broken_oaths|rising_tides|worldfire|beast_silence):\s*\{/gm)].length, 6);
+  for (const fn of ["crisisLegacyDefinition", "rebuildCrisisLegacyModifiers", "applyCrisisWorldChange", "applyCrisisOutcomeLegacy", "applyCrisisLegacyEffects"]) assert.match(legacy, new RegExp(`function ${fn}\\(`));
+  for (const id of ["granary_compact", "endemic_scars", "world_concord", "drowned_coasts", "greenward", "broken_food_web"]) assert.match(legacy, new RegExp(`\\b${id}\\b`));
+  assert.match(persistence, /sourceVersion < 21/);
+  assert.match(legacy, /crisisLegacies/);
+  assert.match(legacy, /permanentModifiers/);
+});
+
 test("教程、外交记忆、英雄、事件链、音效、地图模式与百科均已接入", () => {
   for (const id of ["tutorialPanel", "worldEventModal", "heroList", "audioBtn", "mapModeSelect", "codexModal"]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(experience, /const tutorialSteps/);

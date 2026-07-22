@@ -55,13 +55,13 @@ test("延迟后果到期后执行并从队列转入世界记忆", () => {
   assert.ok(snapshot.worldEvent.memories.some(memory => memory[1] === "consequence" && memory[2] === "observe"));
 });
 
-test("v20 存档无损保存事件参与者、互斥路线和后果队列", () => {
+test("v21 存档无损保存事件参与者、互斥路线和后果队列", () => {
   const { debug } = createWorldRuntime();
   debug.generate("world-event-save");
   debug.triggerWorldEvent("council", "enforcement"); debug.resolveWorldEvent("court");
   debug.triggerWorldEvent("starfall", "omen"); debug.resolveWorldEvent("observe");
   const before = plain(debug.snapshot().worldEvent), save = structuredClone(debug.saveData());
-  assert.equal(save.version, 20);
+  assert.equal(save.version, 21);
   assert.ok(save.worldEventState.consequences.length >= 1);
   debug.restore(save);
   assert.deepEqual(plain(debug.snapshot().worldEvent), before);
@@ -77,5 +77,5 @@ test("v18 旧事件状态会补全参与者、后果队列与路线记录", () =
   assert.ok(snapshot.worldEvent.active[2].length >= 1);
   assert.deepEqual(plain(snapshot.worldEvent.consequences), []);
   assert.deepEqual(plain(snapshot.worldEvent.locked), []);
-  assert.equal(debug.saveData().version, 20);
+  assert.equal(debug.saveData().version, 21);
 });

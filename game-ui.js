@@ -403,7 +403,7 @@ function updateUI() {
     ["议案决议", worldStats.politicalResolutions || 0], ["派系危机", worldStats.politicalCrises || 0], ["动态抉择", worldStats.dynamicEventsResolved || 0],
     ["探索遗迹", worldStats.ruinsExplored || 0], ["历史伤痕", worldStats.historicalScars || 0], ["重建遗址", worldStats.scarsRestored || 0],
     ["寻得神器", worldStats.artifactsFound || 0], ["神器易主", worldStats.artifactTransfers || 0], ["神器失落", worldStats.artifactsLost || 0],
-    ["完成奇观", worldStats.wondersCompleted || 0], ["奇观受损", worldStats.wondersDamaged || 0], ["奇观复原", worldStats.wondersRestored || 0], ["化解危机", worldStats.crisesResolved || 0], ["完成挑战", worldStats.challengesCompleted || 0]
+    ["完成奇观", worldStats.wondersCompleted || 0], ["奇观受损", worldStats.wondersDamaged || 0], ["奇观复原", worldStats.wondersRestored || 0], ["化解危机", worldStats.crisesResolved || 0], ["永久遗产", worldStats.crisisLegacies || 0], ["完成挑战", worldStats.challengesCompleted || 0]
   ].map(([label, value]) => `<span>${label}<b>${value}</b></span>`).join("");
   document.getElementById("chronicleList").innerHTML = chronicle.length ? `<p class="chronicle-summary">共 ${chronicle.length} 条记录 · 保留最近 240 条</p>` + chronicle.slice(0, 30).map(entry => `<div class="event ${entry.kind || "event"}"><time>纪元 ${entry.year}</time>${entry.text}</div>`).join("") : `<p class="muted">历史尚未落笔</p>`;
   let sampledMoisture = 0, sampledFertility = 0, climateSamples = 0;

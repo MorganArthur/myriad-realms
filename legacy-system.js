@@ -46,9 +46,12 @@ const wonderDefs = Object.freeze({
 const dynamicEventDefs = globalThis.RealmRegionalEventContent?.events || Object.freeze({});
 
 const crisisDefs = Object.freeze({
-  ashen_winter: { name: "灰烬长冬", icon: "❄", color: "#9fb8c8", duration: 16, text: "高空灰尘遮蔽日光，作物歉收与严寒正在同时席卷大陆。", response: "储粮、医药与协作" },
-  red_miasma: { name: "赤雾疫潮", icon: "☣", color: "#9bc46b", duration: 14, text: "一种跨越国境传播的疫病迫使各文明共享医药、隔离与救济经验。", response: "医药、救济与公共秩序" },
-  broken_oaths: { name: "盟誓崩解", icon: "⚔", color: "#d66f63", duration: 15, text: "旧怨、军备与边境冲突形成连锁反应，世界秩序濒临全面战争。", response: "外交、权威与共同约束" }
+  ashen_winter: { name: "灰烬长冬", icon: "❄", color: "#9fb8c8", minYear: 22, duration: 16, text: "高空灰尘遮蔽日光，作物歉收与严寒正在同时席卷大陆。", response: "储粮、医药与协作", legacies: { success: { id: "granary_compact", name: "共同粮约", icon: "🌾", text: "跨国粮仓成为常设制度，饥年仍能维持基本供给。", modifiers: { food: .22, health: .03 } }, failure: { id: "ashen_climate", name: "灰烬气候", icon: "◌", text: "寒冷与歉收成为新的气候常态。", modifiers: { food: -.12, health: -.03 } } } },
+  red_miasma: { name: "赤雾疫潮", icon: "☣", color: "#9bc46b", minYear: 24, duration: 14, text: "一种跨越国境传播的疫病迫使各文明共享医药、隔离与救济经验。", response: "医药、救济与公共秩序", legacies: { success: { id: "healers_covenant", name: "医者公约", icon: "✚", text: "各文明长期共享病案、药材和救治技术。", modifiers: { health: .12, research: .08 } }, failure: { id: "endemic_scars", name: "疫病常在", icon: "☣", text: "疫病成为地方性威胁，幸存者以健康代价换来研究动力。", modifiers: { health: -.08, research: .05 } } } },
+  broken_oaths: { name: "盟誓崩解", icon: "⚔", color: "#d66f63", minYear: 26, duration: 15, text: "旧怨、军备与边境冲突形成连锁反应，世界秩序濒临全面战争。", response: "外交、权威与共同约束", legacies: { success: { id: "world_concord", name: "万邦协约", icon: "⚖", text: "共同仲裁制度让信任能够在危机后缓慢恢复。", modifiers: { trust: .05, legitimacy: .03 } }, failure: { id: "age_of_suspicion", name: "猜忌年代", icon: "⚔", text: "各国将背盟写入国策，长期信任不断流失。", modifiers: { trust: -.05, unrest: .04 } } } },
+  rising_tides: { name: "永涨潮汐", icon: "🌊", color: "#5bacc7", minYear: 40, duration: 18, text: "海潮越过旧海岸，低地农田、港口和道路面临永久沉没。", response: "工程、航海与沿海迁移", legacies: { success: { id: "sea_wall_network", name: "环海堤网", icon: "▰", text: "堤坝、灯塔与迁移路线成为跨文明公共工程。", modifiers: { treasury: .05, stone: .05 } }, failure: { id: "drowned_coasts", name: "沉没海岸", icon: "🌊", text: "部分海岸线永久后退，旧港与农田沉入海中。", modifiers: { food: -.08, treasury: -.03 } } } },
+  worldfire: { name: "焚世旱火", icon: "🔥", color: "#d87548", minYear: 44, duration: 17, text: "连续热浪让森林火灾彼此连成火带，多个文明同时失去木材与粮源。", response: "防火带、水源与生态重建", legacies: { success: { id: "greenward", name: "苍翠守望", icon: "🌲", text: "跨境防火带和护林传统永久提高木材恢复能力。", modifiers: { wood: .13, health: .02 } }, failure: { id: "cinder_belt", name: "焦土带", icon: "◆", text: "大片林地永久沙化，木材供给长期承压。", modifiers: { wood: -.08, food: -.04 } } } },
+  beast_silence: { name: "万兽沉寂", icon: "🐾", color: "#8ca96d", minYear: 48, duration: 19, text: "食物网接连断裂，迁徙兽群消失，文明开始争夺最后的猎场与种源。", response: "生态廊道、禁猎与人工繁育", legacies: { success: { id: "migration_covenant", name: "迁徙公约", icon: "🐾", text: "生态廊道和禁猎区让野生种群获得长期恢复能力。", modifiers: { animalHealth: .08, food: .05 } }, failure: { id: "broken_food_web", name: "残缺食物网", icon: "◇", text: "捕食与迁徙关系长期失衡，食物来源更不稳定。", modifiers: { animalHealth: -.05, food: -.08 } } } }
 });
 
 const challengeDefs = Object.freeze({
@@ -65,7 +68,7 @@ let selectedLegacyId = null;
 let legacyUiReady = false;
 
 function createLegacyState() {
-  return { nextEventYear: 7, activeEvent: null, eventHistory: [], nextCrisisYear: 28, activeCrisis: null, crisisHistory: [], challenge: null, challengeHistory: [], nextChallengeYear: 1 };
+  return { nextEventYear: 7, activeEvent: null, eventHistory: [], nextCrisisYear: 28, activeCrisis: null, crisisHistory: [], crisisLegacies: [], permanentModifiers: {}, challenge: null, challengeHistory: [], nextChallengeYear: 1 };
 }
 
 function resetLegacyState() {
@@ -419,15 +422,88 @@ function resolveDynamicEvent(choiceId, automatic = false) {
   addEvent(`${definition.icon} ${automatic ? "各文明最终" : "创世者引导世界"}选择了“${choice.label}”。`, "legacy"); renderLegacyChoiceModal(); updateUI(); if (resume && !automatic) setRunning(true, false); return true;
 }
 
+function crisisLegacyDefinition(crisisId, success) { return crisisDefs[crisisId]?.legacies?.[success ? "success" : "failure"] || null; }
+
+function rebuildCrisisLegacyModifiers() {
+  const modifiers = {};
+  for (const entry of legacyState.crisisLegacies || []) {
+    const definition = crisisLegacyDefinition(entry.crisisId, entry.success); if (!definition || definition.id !== entry.id) continue;
+    for (const [key, value] of Object.entries(definition.modifiers || {})) modifiers[key] = (modifiers[key] || 0) + Number(value || 0);
+  }
+  legacyState.permanentModifiers = modifiers; return modifiers;
+}
+
+function crisisLegacyModifier(key) { return Number(legacyState.permanentModifiers?.[key]) || 0; }
+
+function crisisTerrainCandidates(predicate) {
+  const candidates = [];
+  for (let index = 0; index < tiles.length; index++) {
+    const x = index % MAP_W, y = Math.floor(index / MAP_W), tile = tiles[index];
+    if (!predicate(tile, x, y)) continue;
+    if (villages.some(village => Math.hypot(village.x - x, village.y - y) < 4) || wonders.some(wonder => wonder.status !== "ruined" && Math.hypot(wonder.x - x, wonder.y - y) < 3)) continue;
+    candidates.push(index);
+  }
+  const salt = Math.floor(year) * 17 + (legacyState.activeCrisis?.id || "").split("").reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  return candidates.sort((first, second) => (first * 37 + salt) % 1009 - (second * 37 + salt) % 1009 || first - second);
+}
+
+function applyCrisisWorldChange(crisis, success) {
+  const active = kingdoms.filter(kingdom => !kingdom.defeated);
+  if (crisis.id === "ashen_winter") {
+    if (success) for (const kingdom of active) kingdom.resources.food = Math.min(9999, kingdom.resources.food + 12);
+    else for (const index of crisisTerrainCandidates(tile => isLand(tile) && tile.type !== "mountain").slice(0, 32)) { tiles[index].fertility = Math.max(.05, tiles[index].fertility - .08); tiles[index].biomass = Math.max(0, tiles[index].biomass - .18); }
+  }
+  if (crisis.id === "red_miasma") {
+    if (success) for (const person of people) person.plague = Math.max(0, (person.plague || 0) - 16);
+    else for (let index = 0; index < people.length; index += 7) people[index].plague = Math.max(10, people[index].plague || 0);
+  }
+  if (crisis.id === "broken_oaths") for (let first = 0; first < active.length; first++) for (let second = first + 1; second < active.length; second++) {
+    for (const relation of [relationBetween(active[first].id, active[second].id), relationBetween(active[second].id, active[first].id)].filter(Boolean)) { relation.score = legacyEngine.clamp(relation.score + (success ? 8 : -12), -100, 100); relation.trust = legacyEngine.clamp((relation.trust || 50) + (success ? 6 : -9), 0, 100); relation.grievance = legacyEngine.clamp((relation.grievance || 0) + (success ? -5 : 8), 0, 100); }
+  }
+  if (crisis.id === "rising_tides" && !success) {
+    const changed = crisisTerrainCandidates((tile, x, y) => isLand(tile) && tile.type !== "mountain" && adjacentWaterCount(x, y) > 0).slice(0, 18);
+    for (const index of changed) Object.assign(tiles[index], { type: "water", fertility: .08, biomass: .04, moisture: 1, owner: -1, fire: 0 });
+    if (changed.length) recordHistoricalScar("flooded_town", changed[0] % MAP_W, Math.floor(changed[0] / MAP_W), null, { cause: "永涨潮汐永久改写了海岸线" });
+  }
+  if (crisis.id === "worldfire") {
+    if (success) for (const tile of tiles) { tile.fire = 0; if (tile.type === "forest" || tile.type === "grass") tile.biomass = Math.min(1, tile.biomass + .08); }
+    else { const changed = crisisTerrainCandidates(tile => ["forest", "grass"].includes(tile.type)).slice(0, 28); for (const index of changed) Object.assign(tiles[index], { type: "sand", fertility: Math.min(.18, tiles[index].fertility), biomass: 0, moisture: Math.min(.1, tiles[index].moisture), fire: 0 }); if (changed.length) recordHistoricalScar("dried_well", changed[0] % MAP_W, Math.floor(changed[0] / MAP_W), null, { cause: "焚世旱火留下了永久焦土带" }); }
+  }
+  if (crisis.id === "beast_silence") for (const animal of animals) { animal.hunger = legacyEngine.clamp(animal.hunger + (success ? 12 : -14), 0, 100); animal.health = legacyEngine.clamp(animal.health + (success ? 5 : -5), 1, animalDefs[animal.species]?.health || 100); }
+}
+
+function applyCrisisOutcomeLegacy(crisis, success) {
+  const definition = crisisLegacyDefinition(crisis.id, success); if (!definition) return null;
+  legacyState.crisisLegacies ||= []; const existing = legacyState.crisisLegacies.find(entry => entry.crisisId === crisis.id); if (existing) return existing;
+  const entry = { id: definition.id, crisisId: crisis.id, success: Boolean(success), year: Math.floor(year), text: definition.text };
+  legacyState.crisisLegacies.unshift(entry); legacyState.crisisLegacies = legacyState.crisisLegacies.slice(0, 6); rebuildCrisisLegacyModifiers(); applyCrisisWorldChange(crisis, success); worldStats.crisisLegacies = (worldStats.crisisLegacies || 0) + 1;
+  addEvent(`${definition.icon} 永久遗产“${definition.name}”形成：${definition.text}`, "crisis"); return entry;
+}
+
+function applyCrisisLegacyEffects() {
+  const modifiers = legacyState.permanentModifiers || {}; if (!Object.values(modifiers).some(value => value)) return;
+  const active = kingdoms.filter(kingdom => !kingdom.defeated);
+  for (const kingdom of active) {
+    kingdom.resources.food = legacyEngine.clamp(kingdom.resources.food + (modifiers.food || 0), 0, 9999); kingdom.resources.wood = legacyEngine.clamp(kingdom.resources.wood + (modifiers.wood || 0), 0, 9999); kingdom.resources.stone = legacyEngine.clamp(kingdom.resources.stone + (modifiers.stone || 0), 0, 9999); kingdom.treasury = legacyEngine.clamp(kingdom.treasury + (modifiers.treasury || 0), 0, 99999); kingdom.technology.research += modifiers.research || 0; kingdom.legitimacy = legacyEngine.clamp(kingdom.legitimacy + (modifiers.legitimacy || 0), 0, 100); kingdom.unrest = legacyEngine.clamp(kingdom.unrest + (modifiers.unrest || 0), 0, 100);
+  }
+  if (modifiers.health) for (const person of people) person.needs.health = legacyEngine.clamp((person.needs.health || 60) + modifiers.health, 0, 100);
+  if (modifiers.animalHealth) for (const animal of animals) { animal.health = legacyEngine.clamp(animal.health + modifiers.animalHealth, 1, animalDefs[animal.species]?.health || 100); animal.hunger = legacyEngine.clamp(animal.hunger + modifiers.animalHealth * .5, 0, 100); }
+  if (modifiers.trust) for (let first = 0; first < active.length; first++) for (let second = first + 1; second < active.length; second++) for (const relation of [relationBetween(active[first].id, active[second].id), relationBetween(active[second].id, active[first].id)].filter(Boolean)) { relation.score = legacyEngine.clamp(relation.score + modifiers.trust, -100, 100); relation.trust = legacyEngine.clamp((relation.trust || 50) + modifiers.trust, 0, 100); }
+}
+
 function crisisContribution(kingdom, type) {
   if (type === "ashen_winter") return .8 + technologyLevel(kingdom, "agriculture") * .55 + kingdom.resources.food / Math.max(40, peopleOfKingdom(kingdom.id).length * 9) * .5;
   if (type === "red_miasma") return .8 + technologyLevel(kingdom, "medicine") * .8 + (kingdom.policies?.welfare === "relief" ? .7 : 0);
-  return .8 + technologyLevel(kingdom, "administration") * .6 + Math.max(0, kingdom.legitimacy - 45) * .02;
+  if (type === "broken_oaths") return .8 + technologyLevel(kingdom, "administration") * .6 + Math.max(0, kingdom.legitimacy - 45) * .02;
+  if (type === "rising_tides") return .7 + technologyLevel(kingdom, "engineering") * .55 + technologyLevel(kingdom, "navigation") * .5 + kingdom.resources.stone / 100;
+  if (type === "worldfire") return .7 + technologyLevel(kingdom, "engineering") * .5 + technologyLevel(kingdom, "agriculture") * .55 + kingdom.resources.wood / 140;
+  return .7 + technologyLevel(kingdom, "agriculture") * .55 + technologyLevel(kingdom, "medicine") * .4 + Math.min(1.2, animals.length / 180);
 }
 
 function triggerWorldCrisis(type = null) {
   if (legacyState.activeCrisis) return false;
-  const ids = Object.keys(crisisDefs), selected = crisisDefs[type] ? type : ids[legacyEngine.randi(0, ids.length - 1)], definition = crisisDefs[selected];
+  const ids = Object.keys(crisisDefs), eligible = ids.filter(id => year >= crisisDefs[id].minYear), unused = eligible.filter(id => !legacyState.crisisHistory.some(entry => entry.id === id)), pool = unused.length ? unused : eligible;
+  const selected = crisisDefs[type] ? type : pool.length ? pool[legacyEngine.randi(0, pool.length - 1)] : null, definition = crisisDefs[selected]; if (!definition) { legacyState.nextCrisisYear = year + 4; return false; }
   legacyState.activeCrisis = { id: selected, startedYear: Math.floor(year), deadline: year + definition.duration, progress: 0, interventions: 0 };
   worldStats.crisesStarted = (worldStats.crisesStarted || 0) + 1; addEvent(`${definition.icon} 全球危机“${definition.name}”爆发：${definition.text}`, "crisis"); playExperienceSound("disaster"); return true;
 }
@@ -437,13 +513,18 @@ function applyCrisisPressure(crisis) {
     if (crisis.id === "ashen_winter") { kingdom.resources.food = Math.max(0, kingdom.resources.food - 1.2); kingdom.unrest = legacyEngine.clamp(kingdom.unrest + .18, 0, 100); }
     if (crisis.id === "red_miasma") { const citizens = peopleOfKingdom(kingdom.id); if (citizens.length) { const victim = citizens[legacyEngine.randi(0, citizens.length - 1)]; victim.plague = Math.max(8, victim.plague || 0); } kingdom.unrest = legacyEngine.clamp(kingdom.unrest + .12, 0, 100); }
     if (crisis.id === "broken_oaths") { kingdom.warWeariness = legacyEngine.clamp((kingdom.warWeariness || 0) + .3, 0, 100); kingdom.legitimacy = legacyEngine.clamp(kingdom.legitimacy - .08, 0, 100); }
+    if (crisis.id === "rising_tides") { kingdom.resources.food = Math.max(0, kingdom.resources.food - .7); kingdom.resources.stone = Math.max(0, kingdom.resources.stone - .35); kingdom.unrest = legacyEngine.clamp(kingdom.unrest + .1, 0, 100); }
+    if (crisis.id === "worldfire") { kingdom.resources.food = Math.max(0, kingdom.resources.food - .8); kingdom.resources.wood = Math.max(0, kingdom.resources.wood - .55); kingdom.unrest = legacyEngine.clamp(kingdom.unrest + .12, 0, 100); }
+    if (crisis.id === "beast_silence") { kingdom.resources.food = Math.max(0, kingdom.resources.food - .65); kingdom.unrest = legacyEngine.clamp(kingdom.unrest + .08, 0, 100); }
     crisis.progress += crisisContribution(kingdom, crisis.id);
   }
+  if (crisis.id === "worldfire") for (let index = ticks % 97; index < tiles.length; index += 97) if (tiles[index].type === "forest") tiles[index].fire = Math.max(tiles[index].fire || 0, 2);
+  if (crisis.id === "beast_silence") for (let index = ticks % 11; index < animals.length; index += 11) animals[index].hunger = Math.max(0, animals[index].hunger - 1.5);
 }
 
 function finishWorldCrisis(success) {
   const crisis = legacyState.activeCrisis, definition = crisisDefs[crisis?.id]; if (!crisis || !definition) return false;
-  legacyState.crisisHistory.unshift({ id: crisis.id, success, year: Math.floor(year), progress: Math.round(crisis.progress) }); legacyState.crisisHistory = legacyState.crisisHistory.slice(0, 30);
+  const outcome = applyCrisisOutcomeLegacy(crisis, success); legacyState.crisisHistory.unshift({ id: crisis.id, success, year: Math.floor(year), progress: Math.round(crisis.progress), legacyId: outcome?.id || null }); legacyState.crisisHistory = legacyState.crisisHistory.slice(0, 30);
   if (success) { worldStats.crisesResolved = (worldStats.crisesResolved || 0) + 1; worldProgress.renown += 24; for (const kingdom of kingdoms.filter(candidate => !candidate.defeated)) { kingdom.legitimacy = legacyEngine.clamp(kingdom.legitimacy + 5, 0, 100); kingdom.unrest = legacyEngine.clamp(kingdom.unrest - 5, 0, 100); } }
   else { worldStats.crisesFailed = (worldStats.crisesFailed || 0) + 1; for (const kingdom of kingdoms.filter(candidate => !candidate.defeated)) { kingdom.resources.food = Math.max(0, kingdom.resources.food - 12); kingdom.legitimacy = legacyEngine.clamp(kingdom.legitimacy - 6, 0, 100); kingdom.unrest = legacyEngine.clamp(kingdom.unrest + 8, 0, 100); } }
   addEvent(`${definition.icon} ${definition.name}${success ? "在共同努力下得到化解" : "超过临界点，给世界留下长期创伤"}。`, "crisis"); legacyState.activeCrisis = null; legacyState.nextCrisisYear = year + 24 + legacyEngine.randi(0, 12); return true;
@@ -482,7 +563,7 @@ function dynamicEventStep() {
 }
 
 function legacySimulationStep() {
-  exploreLegacySites(); historicalScarStep(); wonderStep(); crisisStep(); challengeStep(); dynamicEventStep();
+  exploreLegacySites(); historicalScarStep(); wonderStep(); crisisStep(); applyCrisisLegacyEffects(); challengeStep(); dynamicEventStep();
 }
 
 function normalizeLegacyWorld(sourceVersion = 1) {
@@ -496,7 +577,9 @@ function normalizeLegacyWorld(sourceVersion = 1) {
   wonders = (Array.isArray(wonders) ? wonders : []).filter(wonder => wonder && wonderDefs[wonder.type] && getKingdom(Number(wonder.kingdomId))).slice(0, 20).map(wonder => { const maxHp = Math.max(100, Number(wonder.maxHp) || 300), hp = legacyEngine.clamp(Number.isFinite(Number(wonder.hp)) ? Number(wonder.hp) : maxHp, 0, maxHp); let status = ["building", "complete", "damaged", "ruined"].includes(wonder.status) ? wonder.status : "building"; if (status === "complete" && hp < maxHp) status = "damaged"; if (hp <= 0) status = "ruined"; return { ...wonder, id: Math.max(1, Number(wonder.id) || nextWonderId++), kingdomId: Number(wonder.kingdomId), villageId: Number(wonder.villageId) || null, x: legacyEngine.clamp(Number(wonder.x) || 0, 0, MAP_W - 1), y: legacyEngine.clamp(Number(wonder.y) || 0, 0, MAP_H - 1), progress: legacyEngine.clamp(Number(wonder.progress) || 0, 0, 100), status, hp, maxHp, damageHistory: (Array.isArray(wonder.damageHistory) ? wonder.damageHistory : []).slice(0, 30), sponsored: Boolean(wonder.sponsored), startedYear: Math.max(1, Number(wonder.startedYear) || Math.floor(year)), completedYear: wonder.completedYear ? Math.max(1, Number(wonder.completedYear)) : null }; });
   nextLegacySiteId = Math.max(Number(nextLegacySiteId) || 1, 1, ...legacySites.map(site => site.id + 1)); nextArtifactId = Math.max(Number(nextArtifactId) || 1, 1, ...artifacts.map(artifact => artifact.id + 1)); nextWonderId = Math.max(Number(nextWonderId) || 1, 1, ...wonders.map(wonder => wonder.id + 1));
   const saved = legacyState && typeof legacyState === "object" ? legacyState : createLegacyState();
-  legacyState = { nextEventYear: Number.isFinite(Number(saved.nextEventYear)) ? Number(saved.nextEventYear) : year + 7, activeEvent: dynamicEventDefs[saved.activeEvent?.id] ? saved.activeEvent : null, eventHistory: Array.isArray(saved.eventHistory) ? saved.eventHistory.slice(0, 120) : [], nextCrisisYear: Number.isFinite(Number(saved.nextCrisisYear)) ? Number(saved.nextCrisisYear) : year + 24, activeCrisis: crisisDefs[saved.activeCrisis?.id] ? { ...saved.activeCrisis, progress: legacyEngine.clamp(Number(saved.activeCrisis.progress) || 0, 0, 140), deadline: Number(saved.activeCrisis.deadline) || year + crisisDefs[saved.activeCrisis.id].duration } : null, crisisHistory: Array.isArray(saved.crisisHistory) ? saved.crisisHistory.slice(0, 30) : [], challenge: challengeDefs[saved.challenge?.id] ? { ...saved.challenge, baseline: Number(saved.challenge.baseline) || 0, progress: Math.max(0, Number(saved.challenge.progress) || 0), deadline: Number(saved.challenge.deadline) || year + challengeDefs[saved.challenge.id].duration } : null, challengeHistory: Array.isArray(saved.challengeHistory) ? saved.challengeHistory.slice(0, 30) : [], nextChallengeYear: Number.isFinite(Number(saved.nextChallengeYear)) ? Number(saved.nextChallengeYear) : year + 3 };
+  const seenCrisisLegacies = new Set(), crisisLegacies = (Array.isArray(saved.crisisLegacies) ? saved.crisisLegacies : []).filter(entry => { const valid = entry && crisisLegacyDefinition(entry.crisisId, Boolean(entry.success))?.id === entry.id && !seenCrisisLegacies.has(entry.crisisId); if (valid) seenCrisisLegacies.add(entry.crisisId); return valid; }).slice(0, 6).map(entry => ({ id: entry.id, crisisId: entry.crisisId, success: Boolean(entry.success), year: Math.max(1, Number(entry.year) || Math.floor(year)), text: legacyEngine.cleanText(entry.text) || crisisLegacyDefinition(entry.crisisId, Boolean(entry.success)).text }));
+  legacyState = { nextEventYear: Number.isFinite(Number(saved.nextEventYear)) ? Number(saved.nextEventYear) : year + 7, activeEvent: dynamicEventDefs[saved.activeEvent?.id] ? saved.activeEvent : null, eventHistory: Array.isArray(saved.eventHistory) ? saved.eventHistory.slice(0, 120) : [], nextCrisisYear: Number.isFinite(Number(saved.nextCrisisYear)) ? Number(saved.nextCrisisYear) : year + 24, activeCrisis: crisisDefs[saved.activeCrisis?.id] ? { ...saved.activeCrisis, progress: legacyEngine.clamp(Number(saved.activeCrisis.progress) || 0, 0, 140), deadline: Number(saved.activeCrisis.deadline) || year + crisisDefs[saved.activeCrisis.id].duration } : null, crisisHistory: Array.isArray(saved.crisisHistory) ? saved.crisisHistory.slice(0, 30) : [], crisisLegacies, permanentModifiers: {}, challenge: challengeDefs[saved.challenge?.id] ? { ...saved.challenge, baseline: Number(saved.challenge.baseline) || 0, progress: Math.max(0, Number(saved.challenge.progress) || 0), deadline: Number(saved.challenge.deadline) || year + challengeDefs[saved.challenge.id].duration } : null, challengeHistory: Array.isArray(saved.challengeHistory) ? saved.challengeHistory.slice(0, 30) : [], nextChallengeYear: Number.isFinite(Number(saved.nextChallengeYear)) ? Number(saved.nextChallengeYear) : year + 3 };
+  rebuildCrisisLegacyModifiers(); worldStats.crisisLegacies = Math.max(worldStats.crisisLegacies || 0, crisisLegacies.length);
   for (const kingdom of kingdoms) kingdom.legacy = { artifactIds: artifactIdsForKingdom(kingdom.id), wonderId: wonders.find(wonder => wonder.kingdomId === kingdom.id && wonder.status !== "ruined")?.id || null };
   if (sourceVersion < 18) { if (!legacySites.length) seedLegacySites(6); if (!legacyState.challenge) startWorldChallenge("relic_seekers"); }
 }
@@ -537,9 +620,10 @@ function renderLegacyPanels() {
   if (crisisList) {
     const crisis = legacyState.activeCrisis, challenge = legacyState.challenge, event = legacyState.activeEvent;
     const eventHtml = event ? `<button class="legacy-event-summary" data-open-legacy-event><b>${dynamicEventDefs[event.id].icon} ${dynamicEventDefs[event.id].name}</b><span>等待区域抉择</span></button>` : `<div class="legacy-next-event"><b>◌ 区域事件平静</b><span>下一事件约在纪元 ${Math.ceil(legacyState.nextEventYear)}</span></div>`;
-    const crisisHtml = crisis ? `<div class="world-crisis" style="--crisis-color:${crisisDefs[crisis.id].color}"><b>${crisisDefs[crisis.id].icon} ${crisisDefs[crisis.id].name}</b><p>${crisisDefs[crisis.id].text}</p><small>应对进度 ${Math.round(crisis.progress)} / 100 · 截止纪元 ${Math.ceil(crisis.deadline)}</small><i><em style="width:${legacyEngine.clamp(crisis.progress, 0, 100)}%"></em></i><div><button data-crisis-action="coordinate">协调应对</button><button data-crisis-action="relief">组织赈济</button><button data-crisis-action="mobilize">全面动员</button></div></div>` : `<div class="legacy-next-event"><b>◇ 全球危机预警</b><span>下一风险约在纪元 ${Math.ceil(legacyState.nextCrisisYear)}</span></div>`;
+    const crisisHtml = crisis ? `<div class="world-crisis" style="--crisis-color:${crisisDefs[crisis.id].color}"><b>${crisisDefs[crisis.id].icon} ${crisisDefs[crisis.id].name}</b><p>${crisisDefs[crisis.id].text}</p><small>关键能力：${crisisDefs[crisis.id].response}<br>应对进度 ${Math.round(crisis.progress)} / 100 · 截止纪元 ${Math.ceil(crisis.deadline)}</small><i><em style="width:${legacyEngine.clamp(crisis.progress, 0, 100)}%"></em></i><div><button data-crisis-action="coordinate">协调应对</button><button data-crisis-action="relief">组织赈济</button><button data-crisis-action="mobilize">全面动员</button></div></div>` : `<div class="legacy-next-event"><b>◇ 全球危机预警</b><span>下一风险约在纪元 ${Math.ceil(legacyState.nextCrisisYear)}</span></div>`;
     const challengeHtml = challenge ? `<div class="world-challenge"><b>${challengeDefs[challenge.id].icon} ${challengeDefs[challenge.id].name}</b><span>${challengeDefs[challenge.id].text}</span><small>${Math.min(challengeDefs[challenge.id].target, Math.floor(challenge.progress))} / ${challengeDefs[challenge.id].target} · 截止纪元 ${Math.ceil(challenge.deadline)}</small><i><em style="width:${legacyEngine.clamp(challenge.progress / challengeDefs[challenge.id].target * 100, 0, 100)}%"></em></i></div>` : `<div class="legacy-next-event"><b>◇ 新挑战正在酝酿</b><span>约在纪元 ${Math.ceil(legacyState.nextChallengeYear)}</span></div>`;
-    crisisList.innerHTML = eventHtml + crisisHtml + challengeHtml;
+    const legacyHtml = legacyState.crisisLegacies?.length ? `<div class="crisis-legacies"><b>永久世界遗产</b>${legacyState.crisisLegacies.slice(0, 6).map(entry => { const outcome = crisisLegacyDefinition(entry.crisisId, entry.success); return `<span title="${outcome.text}">${outcome.icon} ${outcome.name}<small>纪元 ${entry.year} · ${entry.success ? "化解" : "失守"}</small></span>`; }).join("")}</div>` : "";
+    crisisList.innerHTML = eventHtml + crisisHtml + challengeHtml + legacyHtml;
   }
   if (selectedLegacyId) inspectLegacyEntity(selectedLegacyId);
 }
@@ -563,4 +647,4 @@ function initializeLegacyUI() {
   document.getElementById("legacyEventModal")?.addEventListener("click", event => { const choice = event.target.closest?.("[data-legacy-event-choice]")?.dataset.legacyEventChoice; if (choice) resolveDynamicEvent(choice); });
 }
 
-globalThis.RealmLegacy = Object.freeze({ ruinDefs, scarDefs, artifactDefs, wonderDefs, dynamicEventDefs, crisisDefs, challengeDefs, activateDynamicEvent, resolveDynamicEvent, triggerWorldCrisis, interveneWorldCrisis, beginWonderProject, startWorldChallenge, recordHistoricalScar, actOnLegacySite, transferArtifact, repairArtifact, damageWonder, restoreWonder });
+globalThis.RealmLegacy = Object.freeze({ ruinDefs, scarDefs, artifactDefs, wonderDefs, dynamicEventDefs, crisisDefs, challengeDefs, activateDynamicEvent, resolveDynamicEvent, triggerWorldCrisis, interveneWorldCrisis, finishWorldCrisis, beginWonderProject, startWorldChallenge, recordHistoricalScar, actOnLegacySite, transferArtifact, repairArtifact, damageWonder, restoreWonder, crisisLegacyModifier, applyCrisisLegacyEffects });

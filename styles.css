@@ -573,6 +573,10 @@ button.world-event-summary { cursor: pointer; }
 .world-challenge b { color: #e2c873; font-size: 9px; }
 .world-challenge span { margin-top: 3px; color: #bdb8a0; font-size: 8px; }
 .world-challenge small { margin-top: 3px; color: var(--muted); font-size: 7px; }
+.crisis-legacies { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding-top: 2px; }
+.crisis-legacies > b { grid-column: 1 / -1; color: #cdbd8a; font-size: 8px; }
+.crisis-legacies > span { padding: 5px 6px; border: 1px solid #555241; border-radius: 6px; color: #d9cc9e; background: #1b1c17; font-size: 8px; }
+.crisis-legacies small { display: block; margin-top: 2px; color: var(--muted); font-size: 7px; }
 .legacy-event-modal { border-top-color: #a889cf; }
 .event.legacy::before { background: #9c88d0; box-shadow: 0 0 8px #9c88d0; }
 .event.wonder::before { background: #dfa65f; box-shadow: 0 0 8px #dfa65f; }

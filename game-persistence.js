@@ -1,6 +1,6 @@
 "use strict";
 
-// 持久化层：v20 存档、旧版本迁移、槽位与导入导出。
+// 持久化层：v21 存档、旧版本迁移、槽位与导入导出。
 
 const saveKey = slot => `realm-save-v3-${slot}`;
 const round3 = value => Math.round((value || 0) * 1000) / 1000;
@@ -9,8 +9,8 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 20, savedAt: new Date().toISOString(),
-    meta: { worldName, seed: worldSeed, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, heroes: heroes.filter(hero => hero.status === "active").length, worldEvents: worldEventState.history.length, dynasties: kingdoms.filter(kingdom => !kingdom.defeated && kingdom.dynasty?.rulerId).length, politicalSessions: kingdoms.reduce((sum, kingdom) => sum + (kingdom.politics?.sessions || 0), 0), politicalResolutions: worldStats.politicalResolutions || 0, ruins: legacySites.filter(site => site.origin !== "historical").length, historicalScars: legacySites.filter(site => site.origin === "historical").length, artifacts: artifacts.length, wonders: wonders.filter(wonder => ["complete", "damaged"].includes(wonder.status)).length, crisesResolved: worldStats.crisesResolved || 0, challengesCompleted: worldStats.challengesCompleted || 0, successions: worldStats.successions || 0, marriages: worldStats.marriages || 0, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length, technologyLevels: kingdoms.reduce((sum, kingdom) => sum + totalTechnologyLevel(kingdom), 0), highestEra: Math.max(0, ...kingdoms.map(kingdom => eraIndexOf(kingdom.development?.era))), completedAmbitions: kingdoms.reduce((sum, kingdom) => sum + (kingdom.development?.completedAmbitions?.length || 0), 0) },
+    version: 21, savedAt: new Date().toISOString(),
+    meta: { worldName, seed: worldSeed, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, heroes: heroes.filter(hero => hero.status === "active").length, worldEvents: worldEventState.history.length, dynasties: kingdoms.filter(kingdom => !kingdom.defeated && kingdom.dynasty?.rulerId).length, politicalSessions: kingdoms.reduce((sum, kingdom) => sum + (kingdom.politics?.sessions || 0), 0), politicalResolutions: worldStats.politicalResolutions || 0, ruins: legacySites.filter(site => site.origin !== "historical").length, historicalScars: legacySites.filter(site => site.origin === "historical").length, artifacts: artifacts.length, wonders: wonders.filter(wonder => ["complete", "damaged"].includes(wonder.status)).length, crisesResolved: worldStats.crisesResolved || 0, crisisLegacies: legacyState.crisisLegacies?.length || 0, challengesCompleted: worldStats.challengesCompleted || 0, successions: worldStats.successions || 0, marriages: worldStats.marriages || 0, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length, technologyLevels: kingdoms.reduce((sum, kingdom) => sum + totalTechnologyLevel(kingdom), 0), highestEra: Math.max(0, ...kingdoms.map(kingdom => eraIndexOf(kingdom.development?.era))), completedAmbitions: kingdoms.reduce((sum, kingdom) => sum + (kingdom.development?.completedAmbitions?.length || 0), 0) },
     worldName, worldSeed, year, ticks, tiles: tiles.map(t => [t.type, t.fertility, t.biomass, t.fire || 0, t.owner ?? -1, t.moisture, t.temperature]), climate,
     people, animals, villages, kingdoms, events, chronicle, worldStats, worldProgress, activeDisasters, tradeRoutes, caravans, armies, heroes, worldEventState, legacySites, artifacts, wonders, legacyState, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextHeroId, nextLegacySiteId, nextArtifactId, nextWonderId, nextDisasterId, nextDisasterYear,
     randomState: getRandomState(),
@@ -199,6 +199,7 @@ function normalizeWorldData(sourceVersion = 1) {
   if (sourceVersion < 18) addEvent("古代遗迹重新显露，神器、奇观工程、全球危机与轮换挑战被写入世界史。", "legacy");
   if (sourceVersion < 19) addEvent("十二条大型事件链开始记录参与文明、路线互斥、延迟后果与人物记忆。", "world-event");
   if (sourceVersion < 20) addEvent("战争、天灾与英雄开始留下可考证和重建的历史伤痕，神器与奇观也会流转、受损和修复。", "legacy");
+  if (sourceVersion < 21) addEvent("六类后期世界危机开始留下永久制度、生态与地形后果。", "crisis");
   rebuildWorldIndexes();
   worldStats.villagesFounded = Math.max(worldStats.villagesFounded, villages.length);
   worldStats.buildingsConstructed = Math.max(worldStats.buildingsConstructed, structureTotal());
