@@ -227,7 +227,7 @@ function promoteHero(person, archetype = null) {
   if (!person || person.dead || person.heroId) return null;
   const kingdom = getKingdom(person.kingdom); if (!kingdom || kingdom.defeated) return null;
   archetype ||= heroArchetypeFor(kingdom, person);
-  const names = heroNames[person.race] || heroNames.human, baseName = names[(person.id + kingdom.id * 3) % names.length];
+  const names = heroNames[person.race] || heroNames.human, baseName = person.name || names[(person.id + kingdom.id * 3) % names.length];
   const hero = { id: nextHeroId++, personId: person.id, kingdomId: kingdom.id, name: baseName, archetype, title: heroArchetypes[archetype].name, level: 1, renown: 0, victories: 0, emergedYear: Math.floor(year), status: "active", legacy: "" };
   person.heroId = hero.id; person.health = Math.max(person.health, 115); person.blessed = true;
   if (archetype === "champion" && person.role === "soldier") { person.leadership = Math.max(person.leadership || 1, 1.16); person.isGeneral = true; }
@@ -463,6 +463,8 @@ function renderCodex(tab = "peoples") {
       { icon: "♛", title: "英雄传承", text: "英雄会成长、参战、影响文明，离世后仍作为传奇留在编年史。" },
       { icon: "☀", title: "时代演进", text: "时代由人口、聚落、建筑、科技、贸易与英雄共同推动，而不是单纯随年份解锁。" },
       { icon: "❖", title: "文明野心", text: "八类长期野心各有三个里程碑，完成后会留下持续影响后世的永久传承。" },
+      { icon: "♚", title: "王朝与继承", text: "四种继承法会依据血缘、年资、声望或军功选择统治者；幼主由摄政辅政，争议继承会动摇国家。" },
+      { icon: "♥", title: "人物关系", text: "居民拥有姓名、性别、亲代、配偶、子女、亲近、信任、竞争和共同记忆，关系会延续至后代。" },
       { icon: "📜", title: "世界事件链", text: "重大事件分阶段展开，抉择会改变资源、研究、社会和外交。" },
       { icon: "🗺", title: "地图模式", text: "自然、政治、肥力、人口和外交视图从不同维度解释同一世界。" },
       { icon: "💾", title: "确定性存档", text: "世界种子与随机状态共同保存，可从同一时间线继续演化。" }

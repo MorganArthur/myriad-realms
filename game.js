@@ -30,7 +30,9 @@ const achievementDefs = {
   first_hero: { name: "传奇初章", icon: "♛", description: "世界诞生第一位英雄", points: 10, unlocked: () => heroes.length >= 1 },
   world_story: { name: "时代抉择", icon: "📜", description: "完成一条世界事件链", points: 15, unlocked: () => worldEventState.history.length >= 2 },
   first_ambition: { name: "伟业初成", icon: "❖", description: "任意文明完成一项文明野心", points: 15, unlocked: () => kingdoms.some(kingdom => (kingdom.development?.completedAmbitions?.length || 0) >= 1) },
-  legendary_era: { name: "传奇文明", icon: "♛", description: "任意文明跨入传奇纪", points: 30, unlocked: () => kingdoms.some(kingdom => kingdom.development?.era === "legendary") }
+  legendary_era: { name: "传奇文明", icon: "♛", description: "任意文明跨入传奇纪", points: 30, unlocked: () => kingdoms.some(kingdom => kingdom.development?.era === "legendary") },
+  first_succession: { name: "冠冕相承", icon: "♛", description: "见证第一次统治权交接", points: 15, unlocked: () => (worldStats.successions || 0) >= 1 },
+  royal_marriage: { name: "两姓之好", icon: "♥", description: "见证统治家族缔结婚姻", points: 10, unlocked: () => kingdoms.some(kingdom => kingdom.dynasty?.history?.some(entry => entry.type === "marriage")) }
 };
 const worldGoalDefs = {
   settlement_network: { name: "拓土成邦", description: "建立 6 个聚落", icon: "🏘", target: 6, points: 20, value: () => villages.length },
@@ -71,7 +73,7 @@ function createWorldStats() {
   return {
     births: 0, deaths: 0, villagesFounded: 0, villagesCaptured: 0, buildingsConstructed: 0, buildingsDestroyed: 0,
     tradeDeliveries: 0, tradeVolume: 0, warsStarted: 0, warsEnded: 0, disastersTriggered: 0, disastersSurvived: 0, rebellions: 0,
-    heroesEmerged: 0, worldEventsResolved: 0, ambitionsCompleted: 0, erasReached: 0,
+    heroesEmerged: 0, worldEventsResolved: 0, ambitionsCompleted: 0, erasReached: 0, successions: 0, successionCrises: 0, marriages: 0,
     peakPopulation: 0, peakVillages: 0, peakKingdoms: 0, peakAnimals: 0
   };
 }
@@ -443,7 +445,7 @@ function createKingdom(race = "human") {
     resources: { food: BALANCE.settlement.initialFood, wood: BALANCE.settlement.initialWood, stone: BALANCE.settlement.initialStone }, relations: {}, warWeariness: 0, famine: false, famineLevel: 0, famineSince: null,
     government, policies: { tax: "standard", welfare: "balanced", military: race === "orc" ? "conquest" : "defense" }, treasury: 35,
     legitimacy: 68, unrest: 8, welfareCoverage: 1, lastTaxRevenue: 0, lastPolicyYear: 1, lastReformYear: 0, policyLockedUntil: 0, rebellionCooldownUntil: 0,
-    culture: createCultureState(race, cycle ? `${baseName}·${cycle + 1}` : baseName), technology: createTechnologyState(race), development: createDevelopmentState(race), conquests: 0
+    culture: createCultureState(race, cycle ? `${baseName}·${cycle + 1}` : baseName), technology: createTechnologyState(race), development: createDevelopmentState(race), dynasty: createDynastyState(id, race, government, cycle ? `${baseName}·${cycle + 1}` : baseName), conquests: 0
   };
   kingdoms.push(kingdom);
   for (const other of kingdoms) if (other.id !== id) {
@@ -492,6 +494,7 @@ function generateWorld(seed = document.getElementById("worldSeedInput").value ||
         }
       }
     }
+    updateDynastyHeir(getKingdom(founder.kingdom));
   }
   populateWildlife(valid);
   updateProfessions();
@@ -509,12 +512,13 @@ function generateWorld(seed = document.getElementById("worldSeedInput").value ||
 function spawnPerson(x, y, kingdom = null, race = null) {
   if (!isLand(tileAt(x, y)) || tileAt(x, y).type === "mountain") return;
   race ||= getKingdom(kingdom)?.race || "human";
+  const id = nextPersonId++;
   people.push({
-    id: nextPersonId++, x, y, age: randi(16, 35), health: 100, food: rand(45, 90),
+    id, x, y, age: randi(16, 35), health: 100, food: rand(45, 90),
     kingdom, race, village: null, role: "civilian", profession: "laborer", previousProfession: null, socialClass: "peasant",
     unitType: null, isGeneral: false, leadership: 1,
     happiness: rand(48, 72), needs: { nutrition: 65, shelter: 45, safety: 65, health: 80 },
-    cooldown: randi(0, 20), attackCooldown: 0, blessed: false, dead: false
+    cooldown: randi(0, 20), attackCooldown: 0, blessed: false, dead: false, ...createPersonIdentity(race, id)
   });
 }
 
@@ -651,6 +655,7 @@ function createVillage(founder) {
   let kingdom = getKingdom(founder.kingdom);
   if (!kingdom) {
     kingdom = createKingdom(founder.race); founder.kingdom = kingdom.id;
+    establishRulingHouse(kingdom, founder);
     addEvent(`${kingdom.name}在荒野中诞生。`);
   }
   const village = {
@@ -707,6 +712,7 @@ function policyOf(kingdom, domain) {
 }
 
 function socialClassFor(person) {
+  if (person.isRuler || person.isHeir || person.isRegent) return "elite";
   if (person.age < 16 || person.profession === "child") return "dependent";
   if (person.isGeneral) return "elite";
   if (person.role === "soldier") return "warrior";
@@ -761,6 +767,9 @@ function triggerRebellion(parent, village) {
   const seizedTreasury = Math.max(0, (parent.treasury || 0) * .2); parent.treasury = Math.max(0, (parent.treasury || 0) - seizedTreasury); rebel.treasury = seizedTreasury;
   village.kingdom = rebel.id; village.unrest = 24;
   for (const resident of residents) { resident.kingdom = rebel.id; resident.happiness = Math.min(100, resident.happiness + 10); }
+  rebel.dynasty.law = governmentRulerDefinition(rebel).defaultLaw;
+  const rebelLeader = [...residents].filter(resident => resident.age >= 16).sort((a, b) => personInfluence(b) - personInfluence(a) || a.id - b.id)[0];
+  if (rebelLeader) establishRulingHouse(rebel, rebelLeader);
   const transferRadius = 4 + village.level * 2;
   for (let y = Math.max(0, village.y - transferRadius); y <= Math.min(MAP_H - 1, village.y + transferRadius); y++) for (let x = Math.max(0, village.x - transferRadius); x <= Math.min(MAP_W - 1, village.x + transferRadius); x++) {
     const tile = tileAt(x, y); if (tile?.owner === parent.id && Math.hypot(x - village.x, y - village.y) <= transferRadius) tile.owner = rebel.id;
@@ -786,17 +795,17 @@ function governanceStep() {
     if (kingdom.defeated) continue;
     const citizens = peopleOfKingdom(kingdom.id), realmVillages = villagesOfKingdom(kingdom.id); if (!citizens.length && !realmVillages.length) continue;
     assignSocialClasses(citizens);
-    const classes = socialClassCounts(citizens), government = governmentOf(kingdom), tax = policyOf(kingdom, "tax"), welfare = policyOf(kingdom, "welfare"), military = policyOf(kingdom, "military");
+    const classes = socialClassCounts(citizens), government = governmentOf(kingdom), tax = policyOf(kingdom, "tax"), welfare = policyOf(kingdom, "welfare"), military = policyOf(kingdom, "military"), dynastyModifiers = dynastyGovernanceModifiers(kingdom);
     const adults = citizens.length - classes.dependent, markets = realmVillages.reduce((sum, village) => sum + buildingCount(village, "market"), 0);
     const economicBase = adults * .55 + classes.merchant * 1.8 + classes.artisan * .7 + markets * 2.2;
     const administrationBonus = 1 + technologyLevel(kingdom, "administration") * .08;
-    kingdom.lastTaxRevenue = economicBase * tax.rate * 4 * government.tax * administrationBonus; kingdom.treasury = clamp((kingdom.treasury || 0) + kingdom.lastTaxRevenue, 0, 99999);
+    kingdom.lastTaxRevenue = economicBase * tax.rate * 4 * government.tax * administrationBonus * dynastyModifiers.tax; kingdom.treasury = clamp((kingdom.treasury || 0) + kingdom.lastTaxRevenue, 0, 99999);
     const welfareCost = citizens.length * welfare.cost * government.welfare, paid = Math.min(kingdom.treasury, welfareCost);
     kingdom.treasury -= paid; kingdom.welfareCoverage = welfareCost > 0 ? paid / welfareCost : 1;
     const happiness = averageHappiness(citizens), lowCoverage = (1 - kingdom.welfareCoverage) * 24;
-    const unrestTarget = clamp(Math.max(0, 56 - happiness) * 1.12 + (kingdom.famineLevel || 0) * .5 + (kingdom.warWeariness || 0) * .27 + tax.unrest + welfare.unrest + lowCoverage + (military.happiness < 0 && !kingdomAtWar(kingdom.id) ? -military.happiness : 0) - government.stability, 0, 100);
+    const unrestTarget = clamp(Math.max(0, 56 - happiness) * 1.12 + (kingdom.famineLevel || 0) * .5 + (kingdom.warWeariness || 0) * .27 + tax.unrest + welfare.unrest + lowCoverage + (military.happiness < 0 && !kingdomAtWar(kingdom.id) ? -military.happiness : 0) - government.stability - dynastyModifiers.stability, 0, 100);
     kingdom.unrest = clamp((kingdom.unrest || 0) + (unrestTarget - (kingdom.unrest || 0)) * .14, 0, 100);
-    const treasurySecurity = Math.min(10, kingdom.treasury / Math.max(1, citizens.length) * .45), legitimacyTarget = clamp(happiness * .68 + government.stability + treasurySecurity + technologyLevel(kingdom, "administration") * 2 - kingdom.unrest * .32 - (kingdom.warWeariness || 0) * .12, 0, 100);
+    const treasurySecurity = Math.min(10, kingdom.treasury / Math.max(1, citizens.length) * .45), legitimacyTarget = clamp(happiness * .68 + government.stability + dynastyModifiers.legitimacy + treasurySecurity + technologyLevel(kingdom, "administration") * 2 - kingdom.unrest * .32 - (kingdom.warWeariness || 0) * .12, 0, 100);
     kingdom.legitimacy = clamp((kingdom.legitimacy || 60) + (legitimacyTarget - (kingdom.legitimacy || 60)) * .1, 0, 100);
     const capital = [...realmVillages].sort((a, b) => peopleOfVillage(b.id).length - peopleOfVillage(a.id).length)[0];
     for (const village of realmVillages) {
@@ -812,8 +821,9 @@ function governanceStep() {
       kingdom.lastPolicyYear = Math.floor(year);
     }
     if (kingdom.legitimacy < 28 && kingdom.unrest > 56 && year - (kingdom.lastReformYear || 0) > 15 && random() < .12) {
-      const oldGovernment = governmentOf(kingdom).name, nextGovernment = kingdom.government === "republic" ? "council" : kingdom.race === "orc" ? "clan" : "republic";
+      const previousGovernment = kingdom.government, oldGovernment = governmentOf(kingdom).name, nextGovernment = kingdom.government === "republic" ? "council" : kingdom.race === "orc" ? "clan" : "republic";
       kingdom.government = nextGovernment; kingdom.lastReformYear = Math.floor(year); kingdom.legitimacy = Math.min(100, kingdom.legitimacy + 16); kingdom.unrest = Math.max(0, kingdom.unrest - 14);
+      onGovernmentChanged(kingdom, previousGovernment);
       addEvent(`${kingdom.name}废除${oldGovernment}，改组为${governmentDefs[nextGovernment].name}。`);
     }
     const candidate = rebellionCandidate(kingdom);
@@ -1222,7 +1232,7 @@ function simulationStep() {
   const ecologyStride = people.length + animals.length > BALANCE.simulation.adaptiveEcologyThreshold ? 3 : 2;
   regenerateBiomass(); if (ticks % ecologyStride === 0) simulateAnimals(ecologyStride);
   if (ticks % BALANCE.cadence.resources === 0) produceResources();
-  if (ticks % BALANCE.cadence.culture === 0) { dispatchCaravans(); governanceStep(); cultureTechnologyStep(); longTermDevelopmentStep(); }
+  if (ticks % BALANCE.cadence.culture === 0) { dispatchCaravans(); governanceStep(); cultureTechnologyStep(); longTermDevelopmentStep(); dynastySimulationStep(); }
   if (ticks % BALANCE.cadence.professions === 0) { updateMilitaryRoles(); updateProfessions(); }
   if (ticks % BALANCE.cadence.diplomacy === 0) { diplomacyStep(); updateTradeRoutes(); }
   if (ticks % BALANCE.cadence.colonies === 0) attemptColonies();
@@ -1281,6 +1291,7 @@ function simulationStep() {
     if (home && person.role === "civilian" && person.age > 17 && person.food > 76 && person.happiness > 45 && !realm?.famine && realm?.resources.food > 10 && homePop < villageCapacity(home) && people.length < BALANCE.simulation.populationCap && random() < BALANCE.citizens.baseBirthChance * race.birth * happinessBirthRate * seasonalBirthRate) {
       spawnPerson(person.x, person.y, person.kingdom, person.race);
       const baby = people[people.length - 1]; baby.age = 0; baby.village = person.village; baby.food = 60; baby.profession = "child"; baby.happiness = 68; baby.needs = { nutrition: 60, shelter: 78, safety: 72, health: 100 };
+      const coParent = coParentFor(person); registerBirthLineage(baby, [person.id, coParent?.id].filter(Boolean));
       worldStats.births++;
       person.food -= 18; realm.resources.food = Math.max(0, realm.resources.food - 1.5);
     }
@@ -1913,6 +1924,7 @@ function captureVillage(village, newKingdomId) {
   addEvent(`${newKingdom?.name}攻占了${oldKingdom?.name}的${village.name}。`);
   if (!villages.some(v => v.kingdom === oldKingdomId)) {
     oldKingdom.defeated = true;
+    markKingdomDynastyDefeated(oldKingdom);
     peopleOfKingdom(oldKingdomId).forEach(p => { p.kingdom = newKingdomId; if (p.role === "soldier") demobilizePerson(p); });
     addEvent(`${oldKingdom.name}失去最后一座聚落，宣告覆灭。`);
     for (const other of kingdoms) if (other.id !== oldKingdomId && relationBetween(oldKingdomId, other.id)) setRelation(oldKingdomId, other.id, "peace", -20, true);
@@ -2081,11 +2093,18 @@ document.getElementById("cultureList").addEventListener("click", e => {
 document.getElementById("developmentList").addEventListener("click", e => {
   const item = e.target.closest("[data-development]"); if (item) inspectKingdom(Number(item.dataset.development));
 });
+document.getElementById("dynastyList").addEventListener("click", e => {
+  const item = e.target.closest("[data-dynasty]"); if (item) inspectKingdom(Number(item.dataset.dynasty));
+});
 document.getElementById("diplomacyList").addEventListener("click", e => {
   const button = e.target.closest("[data-diplomacy-action]"); if (!button) return;
   interveneDiplomacy(Number(button.dataset.kingdomA), Number(button.dataset.kingdomB), button.dataset.diplomacyAction);
 });
 document.getElementById("selectionCard").addEventListener("click", e => {
+  const personButton = e.target.closest("[data-person-id]");
+  if (personButton && Number.isFinite(Number(personButton.dataset.personId))) { inspectPersonById(Number(personButton.dataset.personId)); return; }
+  const lawButton = e.target.closest("[data-succession-law]");
+  if (lawButton && selectedKingdomId !== null) { setSuccessionLaw(selectedKingdomId, lawButton.dataset.successionLaw); return; }
   const ambitionButton = e.target.closest("[data-ambition]");
   if (ambitionButton && selectedKingdomId !== null) { guideKingdomAmbition(selectedKingdomId, ambitionButton.dataset.ambition); return; }
   const technologyButton = e.target.closest("[data-tech-focus]");
@@ -2159,10 +2178,11 @@ function debugSnapshot() {
     famineRealms: activeKingdoms.filter(kingdom => kingdom.famine).length, disasters: activeDisasters.map(disaster => [disaster.type, round3(disaster.x), round3(disaster.y), disaster.duration]),
     resources: activeKingdoms.map(kingdom => [kingdom.id, round3(kingdom.resources.food), round3(kingdom.resources.wood), round3(kingdom.resources.stone)]),
     technology: activeKingdoms.map(kingdom => [kingdom.id, totalTechnologyLevel(kingdom)]),
-    development: activeKingdoms.map(kingdom => [kingdom.id, kingdom.development?.era || "kindling", kingdom.development?.ambition || null, kingdom.development?.completedAmbitions?.map(entry => entry.id) || []]), diplomacy, randomState: getRandomState(),
+    development: activeKingdoms.map(kingdom => [kingdom.id, kingdom.development?.era || "kindling", kingdom.development?.ambition || null, kingdom.development?.completedAmbitions?.map(entry => entry.id) || []]),
+    dynasties: activeKingdoms.map(kingdom => [kingdom.id, kingdom.dynasty?.name || null, kingdom.dynasty?.rulerId || null, kingdom.dynasty?.heirId || null, kingdom.dynasty?.law || null, kingdom.dynasty?.sequence || 0, Boolean(kingdom.dynasty?.disputed)]), diplomacy, randomState: getRandomState(),
     heroes: heroes.filter(hero => hero.status === "active").map(hero => [hero.id, hero.kingdomId, hero.level, round3(hero.renown), hero.victories]),
     worldEvents: worldEventState.history.map(entry => [entry.chain, entry.stage, entry.choice, entry.year]),
-    history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries }
+    history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries, marriages: worldStats.marriages || 0, successions: worldStats.successions || 0, successionCrises: worldStats.successionCrises || 0 }
   };
 }
 globalThis.RealmDebug = Object.freeze({
