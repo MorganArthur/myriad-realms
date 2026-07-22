@@ -1,6 +1,6 @@
 "use strict";
 
-// 世界遗产层：动态事件、遗迹探索、神器、奇观工程、全球危机与轮换挑战。
+// 世界遗产层：区域事件、遗迹探索、神器、奇观工程、全球危机与轮换挑战。
 
 const legacyEngine = globalThis.WorldEngine;
 
@@ -25,33 +25,7 @@ const wonderDefs = Object.freeze({
   sky_citadel: { name: "苍穹战垒", icon: "🏰", color: "#cf7667", race: "orc", effect: "军团士气、合法性与国土防御提高。" }
 });
 
-const dynamicEventDefs = Object.freeze({
-  golden_harvest: { name: "金穗丰年", icon: "🌾", text: "异常温和的季节带来超额收成。各文明必须决定如何处理这份短暂的富足。", choices: [
-    { id: "store", label: "充实粮仓", hint: "各国获得粮食储备", effect: "store_food" },
-    { id: "festival", label: "举办庆典", hint: "提高幸福与合法性", effect: "festival" },
-    { id: "seed", label: "保留良种", hint: "推动农业研究", effect: "agriculture" }
-  ] },
-  border_envoys: { name: "边境使团", icon: "🕊", text: "一支未经预约的使团穿过争议边境，既可能打开谈判，也可能成为新的导火索。", choices: [
-    { id: "welcome", label: "礼遇使团", hint: "改善国家互信", effect: "diplomacy" },
-    { id: "terms", label: "交换条件", hint: "获得国库与贸易收益", effect: "commerce" },
-    { id: "detain", label: "扣押盘问", hint: "提高戒备但积累旧怨", effect: "detain" }
-  ] },
-  guild_invention: { name: "工坊新法", icon: "⚙", text: "行会呈上一套前所未见的工具。资助、开放还是封存，将决定技术如何扩散。", choices: [
-    { id: "patronage", label: "国家资助", hint: "消耗国库，大幅推动研究", effect: "patronage" },
-    { id: "open", label: "公开技艺", hint: "所有文明获得研究", effect: "open_knowledge" },
-    { id: "license", label: "授予专营", hint: "国库获利，行会影响上升", effect: "license" }
-  ] },
-  wandering_people: { name: "流民长队", icon: "🚶", text: "战乱与灾害之外，一支寻找新家园的长队出现在文明边缘。", choices: [
-    { id: "shelter", label: "安置流民", hint: "民生改善但消耗粮食", effect: "shelter" },
-    { id: "settle", label: "开垦边地", hint: "获得资源与行政经验", effect: "settle" },
-    { id: "close", label: "封闭边界", hint: "安全上升但幸福下降", effect: "close_border" }
-  ] },
-  comet_faith: { name: "彗星之夜", icon: "☄", text: "明亮彗星照耀数夜，祭司、学者与将军都宣称自己理解它的含义。", choices: [
-    { id: "observe", label: "记录天象", hint: "推动研究并缩短遗迹探索", effect: "observe" },
-    { id: "rite", label: "举行仪式", hint: "提高信仰与凝聚力", effect: "rite" },
-    { id: "omen", label: "宣告军兆", hint: "提高尚武与军团士气", effect: "war_omen" }
-  ] }
-});
+const dynamicEventDefs = globalThis.RealmRegionalEventContent?.events || Object.freeze({});
 
 const crisisDefs = Object.freeze({
   ashen_winter: { name: "灰烬长冬", icon: "❄", color: "#9fb8c8", duration: 16, text: "高空灰尘遮蔽日光，作物歉收与严寒正在同时席卷大陆。", response: "储粮、医药与协作" },
@@ -215,43 +189,68 @@ function wonderStep() {
   for (const wonder of wonders) if (getKingdom(wonder.kingdomId)?.defeated && wonder.status !== "ruined") { wonder.status = "ruined"; addEvent(`${wonderDefs[wonder.type].icon} ${wonderDefs[wonder.type].name}随其建造文明覆灭，成为新的遗迹。`, "wonder"); }
 }
 
-function eventTargetKingdom() {
-  return [...kingdoms].filter(kingdom => !kingdom.defeated).sort((a, b) => peopleOfKingdom(b.id).length + totalTechnologyLevel(b) * 3 - peopleOfKingdom(a.id).length - totalTechnologyLevel(a) * 3)[0] || null;
+function regionalEventContext(kingdom) {
+  const active = kingdoms.filter(candidate => !candidate.defeated), realmVillages = villages.filter(village => village.kingdom === kingdom.id);
+  const realmRoutes = tradeRoutes.filter(route => realmVillages.some(village => village.id === route.fromVillage || village.id === route.toVillage)).length;
+  return { activeKingdoms: active.length, population: peopleOfKingdom(kingdom.id).length, tradeRoutes: realmRoutes, hasPort: realmVillages.some(village => buildingCount(village, "dock") > 0), technology: totalTechnologyLevel(kingdom), guildInfluence: kingdom.politics?.factions?.guilds?.influence || 0, faith: kingdom.culture?.values?.faith || 0, valor: kingdom.culture?.values?.valor || 0, unrest: kingdom.unrest || 0, stone: kingdom.resources?.stone || 0, food: kingdom.resources?.food || 0, dynasty: kingdom.dynasty?.rulerId ? 1 : 0, hasHero: heroes.some(hero => hero.status === "active" && hero.kingdomId === kingdom.id), animals: animals.filter(animal => !animal.dead).length, disasters: worldStats.disastersTriggered || 0, ruins: legacySites.length, marriages: worldStats.marriages || 0 };
+}
+
+function regionalEventConditionsMet(definition, kingdom) {
+  if (!definition || !kingdom || kingdom.defeated) return false;
+  const conditions = definition.conditions || {}, context = regionalEventContext(kingdom);
+  return year >= (conditions.minYear || 0) && context.activeKingdoms >= (conditions.minKingdoms || 1) && context.tradeRoutes >= (conditions.minTradeRoutes || 0) && context.technology >= (conditions.minTechnology || 0) && context.guildInfluence >= (conditions.minGuildInfluence || 0) && context.faith >= (conditions.minFaith || 0) && context.valor >= (conditions.minValor || 0) && context.unrest >= (conditions.minUnrest || 0) && context.stone >= (conditions.minStone || 0) && context.food >= (conditions.minFood || 0) && context.dynasty >= (conditions.minDynasty || 0) && context.animals >= (conditions.minAnimals || 0) && context.disasters >= (conditions.minDisasters || 0) && context.ruins >= (conditions.minRuins || 0) && context.marriages >= (conditions.minMarriages || 0) && (!conditions.hasPort || context.hasPort) && (!conditions.hasHero || context.hasHero);
+}
+
+function regionalEventTargetScore(kingdom, focus) {
+  const context = regionalEventContext(kingdom);
+  if (focus === "weakest") return -(context.population * 4 + kingdom.legitimacy + context.food * .15);
+  if (focus === "food") return context.food + context.population * 2;
+  if (focus === "diplomacy") return Object.values(kingdom.relations || {}).reduce((sum, relation) => sum + (relation.trust || 0), 0);
+  if (focus === "guilds") return context.guildInfluence * 3 + context.technology * 5;
+  if (focus === "faith") return context.faith * 2 + kingdom.legitimacy;
+  if (focus === "mining") return context.stone + technologyLevel(kingdom, "engineering") * 20;
+  if (focus === "trade" || focus === "navigation") return context.tradeRoutes * 30 + kingdom.treasury * .15 + Number(context.hasPort) * 18;
+  if (focus === "nature") return context.faith + (kingdom.race === "elf" ? 40 : 0);
+  if (focus === "military") return context.valor * 2 + armies.filter(army => army.kingdomId === kingdom.id).reduce((sum, army) => sum + army.soldierIds.length, 0) * 3;
+  if (focus === "medicine") return technologyLevel(kingdom, "medicine") * 30 + context.population;
+  if (focus === "unrest") return context.unrest * 3 - kingdom.legitimacy;
+  if (focus === "dynasty") return (kingdom.dynasty?.disputed ? 80 : 0) + (kingdom.dynasty?.prestige || 0);
+  if (focus === "heroes") return heroes.filter(hero => hero.status === "active" && hero.kingdomId === kingdom.id).reduce((sum, hero) => sum + hero.level * 15 + hero.renown, 0);
+  if (focus === "legacy") return artifacts.filter(artifact => artifact.kingdomId === kingdom.id).length * 35 + context.technology;
+  return context.technology * 10 + kingdom.technology.research + context.population;
+}
+
+function eventTargetKingdom(definition, force = false) {
+  return kingdoms.filter(kingdom => !kingdom.defeated && (force || regionalEventConditionsMet(definition, kingdom))).sort((a, b) => regionalEventTargetScore(b, definition.focus) - regionalEventTargetScore(a, definition.focus) || a.id - b.id)[0] || null;
+}
+
+function chooseRegionalEvent() {
+  const recent = new Set(legacyState.eventHistory.slice(0, 8).map(entry => entry.id));
+  const candidates = Object.entries(dynamicEventDefs).map(([id, definition]) => ({ id, definition, target: eventTargetKingdom(definition) })).filter(entry => entry.target);
+  const fresh = candidates.filter(entry => !recent.has(entry.id)), pool = fresh.length ? fresh : candidates;
+  return pool.length ? pool[legacyEngine.randi(0, pool.length - 1)] : null;
 }
 
 function activateDynamicEvent(id = null) {
   if (legacyState.activeEvent || worldEventState.active) return false;
-  const ids = Object.keys(dynamicEventDefs), eventId = dynamicEventDefs[id] ? id : ids[legacyEngine.randi(0, ids.length - 1)], definition = dynamicEventDefs[eventId], target = eventTargetKingdom();
-  if (!target) return false;
+  const selected = dynamicEventDefs[id] ? { id, definition: dynamicEventDefs[id], target: eventTargetKingdom(dynamicEventDefs[id], true) } : chooseRegionalEvent();
+  if (!selected?.target) { legacyState.nextEventYear = year + 4; return false; }
+  const { id: eventId, definition, target } = selected;
   const resumeAfterChoice = typeof running !== "undefined" && running && !debugBatchMode;
   legacyState.activeEvent = { id: eventId, kingdomId: target.id, startedYear: Math.floor(year), resumeAfterChoice };
   if (resumeAfterChoice) setRunning(false, false);
-  addEvent(`${definition.icon} 动态事件“${definition.name}”正在等待抉择。`, "legacy"); renderLegacyChoiceModal(); renderLegacyPanels(); playExperienceSound("event"); return true;
+  addEvent(`${definition.icon} 区域事件“${definition.name}”正在等待抉择。`, "legacy"); renderLegacyChoiceModal(); renderLegacyPanels(); playExperienceSound("event"); return true;
 }
 
-function applyDynamicEventEffect(effect, target) {
-  const active = kingdoms.filter(kingdom => !kingdom.defeated);
-  if (effect === "store_food") for (const kingdom of active) kingdom.resources.food += 16;
-  if (effect === "festival") for (const kingdom of active) { kingdom.legitimacy = legacyEngine.clamp(kingdom.legitimacy + 4, 0, 100); for (const person of peopleOfKingdom(kingdom.id).slice(0, 30)) person.happiness = legacyEngine.clamp(person.happiness + 5, 0, 100); }
-  if (effect === "agriculture") for (const kingdom of active) { kingdom.technology.focus = "agriculture"; kingdom.technology.research += 8; }
-  if (effect === "diplomacy") for (let first = 0; first < active.length; first++) for (let second = first + 1; second < active.length; second++) recordDiplomaticMemory(active[first].id, active[second].id, "legacy-event", "边境使团促成了新的谅解", 4, -4);
-  if (effect === "commerce") for (const kingdom of active) kingdom.treasury += 9;
-  if (effect === "detain" && target) { target.legitimacy = legacyEngine.clamp(target.legitimacy + 3, 0, 100); target.culture.values.valor = legacyEngine.clamp(target.culture.values.valor + 4, 0, 100); for (const other of active.filter(kingdom => kingdom.id !== target.id)) recordDiplomaticMemory(target.id, other.id, "grievance", "扣押了跨境使团", -5, 8); }
-  if (effect === "patronage" && target) { target.treasury = Math.max(0, target.treasury - 14); target.technology.research += 24; }
-  if (effect === "open_knowledge") for (const kingdom of active) kingdom.technology.research += 9;
-  if (effect === "license" && target) { target.treasury += 18; if (target.politics?.factions?.guilds) target.politics.factions.guilds.influence = legacyEngine.clamp(target.politics.factions.guilds.influence + 5, 0, 100); }
-  if (effect === "shelter" && target) { target.resources.food = Math.max(0, target.resources.food - 12); target.unrest = legacyEngine.clamp(target.unrest - 6, 0, 100); target.legitimacy = legacyEngine.clamp(target.legitimacy + 4, 0, 100); }
-  if (effect === "settle" && target) { target.resources.wood += 12; target.resources.stone += 8; target.technology.research += 5; }
-  if (effect === "close_border" && target) { target.unrest = legacyEngine.clamp(target.unrest - 2, 0, 100); for (const person of peopleOfKingdom(target.id).slice(0, 25)) person.happiness = legacyEngine.clamp(person.happiness - 3, 0, 100); }
-  if (effect === "observe") { for (const kingdom of active) kingdom.technology.research += 7; for (const site of legacySites.filter(site => site.status === "exploring")) site.progress = legacyEngine.clamp(site.progress + 8, 0, 100); }
-  if (effect === "rite") for (const kingdom of active) { kingdom.culture.values.faith = legacyEngine.clamp(kingdom.culture.values.faith + 4, 0, 100); if (kingdom.politics) kingdom.politics.cohesion = legacyEngine.clamp(kingdom.politics.cohesion + 3, 0, 100); }
-  if (effect === "war_omen") for (const kingdom of active) { kingdom.culture.values.valor = legacyEngine.clamp(kingdom.culture.values.valor + 4, 0, 100); for (const army of armies.filter(candidate => candidate.kingdomId === kingdom.id)) army.morale = legacyEngine.clamp(army.morale + 7, 0, 100); }
+function applyDynamicEventEffect(choice, target) {
+  if (!choice || !target) return;
+  applyWorldEventEffects(choice.effects, [target.id]);
 }
 
 function resolveDynamicEvent(choiceId, automatic = false) {
   const active = legacyState.activeEvent, definition = dynamicEventDefs[active?.id]; if (!active || !definition) return false;
   const choice = definition.choices.find(candidate => candidate.id === choiceId) || definition.choices[0], resume = Boolean(active.resumeAfterChoice), target = getKingdom(active.kingdomId);
-  applyDynamicEventEffect(choice.effect, target); legacyState.eventHistory.unshift({ id: active.id, choice: choice.id, kingdomId: active.kingdomId, year: Math.floor(year) }); legacyState.eventHistory = legacyState.eventHistory.slice(0, 60);
+  applyDynamicEventEffect(choice, target); legacyState.eventHistory.unshift({ id: active.id, choice: choice.id, kingdomId: active.kingdomId, year: Math.floor(year) }); legacyState.eventHistory = legacyState.eventHistory.slice(0, 120);
   worldStats.dynamicEventsResolved = (worldStats.dynamicEventsResolved || 0) + 1; legacyState.nextEventYear = year + 7 + legacyEngine.randi(0, 6); legacyState.activeEvent = null;
   addEvent(`${definition.icon} ${automatic ? "各文明最终" : "创世者引导世界"}选择了“${choice.label}”。`, "legacy"); renderLegacyChoiceModal(); updateUI(); if (resume && !automatic) setRunning(true, false); return true;
 }
@@ -328,7 +327,7 @@ function normalizeLegacyWorld(sourceVersion = 1) {
   wonders = (Array.isArray(wonders) ? wonders : []).filter(wonder => wonder && wonderDefs[wonder.type] && getKingdom(Number(wonder.kingdomId))).slice(0, 20).map(wonder => ({ ...wonder, id: Math.max(1, Number(wonder.id) || nextWonderId++), kingdomId: Number(wonder.kingdomId), villageId: Number(wonder.villageId) || null, x: legacyEngine.clamp(Number(wonder.x) || 0, 0, MAP_W - 1), y: legacyEngine.clamp(Number(wonder.y) || 0, 0, MAP_H - 1), progress: legacyEngine.clamp(Number(wonder.progress) || 0, 0, 100), status: ["building", "complete", "ruined"].includes(wonder.status) ? wonder.status : "building", sponsored: Boolean(wonder.sponsored), startedYear: Math.max(1, Number(wonder.startedYear) || Math.floor(year)), completedYear: wonder.completedYear ? Math.max(1, Number(wonder.completedYear)) : null }));
   nextLegacySiteId = Math.max(Number(nextLegacySiteId) || 1, 1, ...legacySites.map(site => site.id + 1)); nextArtifactId = Math.max(Number(nextArtifactId) || 1, 1, ...artifacts.map(artifact => artifact.id + 1)); nextWonderId = Math.max(Number(nextWonderId) || 1, 1, ...wonders.map(wonder => wonder.id + 1));
   const saved = legacyState && typeof legacyState === "object" ? legacyState : createLegacyState();
-  legacyState = { nextEventYear: Number.isFinite(Number(saved.nextEventYear)) ? Number(saved.nextEventYear) : year + 7, activeEvent: dynamicEventDefs[saved.activeEvent?.id] ? saved.activeEvent : null, eventHistory: Array.isArray(saved.eventHistory) ? saved.eventHistory.slice(0, 60) : [], nextCrisisYear: Number.isFinite(Number(saved.nextCrisisYear)) ? Number(saved.nextCrisisYear) : year + 24, activeCrisis: crisisDefs[saved.activeCrisis?.id] ? { ...saved.activeCrisis, progress: legacyEngine.clamp(Number(saved.activeCrisis.progress) || 0, 0, 140), deadline: Number(saved.activeCrisis.deadline) || year + crisisDefs[saved.activeCrisis.id].duration } : null, crisisHistory: Array.isArray(saved.crisisHistory) ? saved.crisisHistory.slice(0, 30) : [], challenge: challengeDefs[saved.challenge?.id] ? { ...saved.challenge, baseline: Number(saved.challenge.baseline) || 0, progress: Math.max(0, Number(saved.challenge.progress) || 0), deadline: Number(saved.challenge.deadline) || year + challengeDefs[saved.challenge.id].duration } : null, challengeHistory: Array.isArray(saved.challengeHistory) ? saved.challengeHistory.slice(0, 30) : [], nextChallengeYear: Number.isFinite(Number(saved.nextChallengeYear)) ? Number(saved.nextChallengeYear) : year + 3 };
+  legacyState = { nextEventYear: Number.isFinite(Number(saved.nextEventYear)) ? Number(saved.nextEventYear) : year + 7, activeEvent: dynamicEventDefs[saved.activeEvent?.id] ? saved.activeEvent : null, eventHistory: Array.isArray(saved.eventHistory) ? saved.eventHistory.slice(0, 120) : [], nextCrisisYear: Number.isFinite(Number(saved.nextCrisisYear)) ? Number(saved.nextCrisisYear) : year + 24, activeCrisis: crisisDefs[saved.activeCrisis?.id] ? { ...saved.activeCrisis, progress: legacyEngine.clamp(Number(saved.activeCrisis.progress) || 0, 0, 140), deadline: Number(saved.activeCrisis.deadline) || year + crisisDefs[saved.activeCrisis.id].duration } : null, crisisHistory: Array.isArray(saved.crisisHistory) ? saved.crisisHistory.slice(0, 30) : [], challenge: challengeDefs[saved.challenge?.id] ? { ...saved.challenge, baseline: Number(saved.challenge.baseline) || 0, progress: Math.max(0, Number(saved.challenge.progress) || 0), deadline: Number(saved.challenge.deadline) || year + challengeDefs[saved.challenge.id].duration } : null, challengeHistory: Array.isArray(saved.challengeHistory) ? saved.challengeHistory.slice(0, 30) : [], nextChallengeYear: Number.isFinite(Number(saved.nextChallengeYear)) ? Number(saved.nextChallengeYear) : year + 3 };
   for (const kingdom of kingdoms) kingdom.legacy = { artifactIds: artifactIdsForKingdom(kingdom.id), wonderId: wonders.find(wonder => wonder.kingdomId === kingdom.id && wonder.status !== "ruined")?.id || null };
   if (sourceVersion < 18) { if (!legacySites.length) seedLegacySites(6); if (!legacyState.challenge) startWorldChallenge("relic_seekers"); }
 }
@@ -336,7 +335,7 @@ function normalizeLegacyWorld(sourceVersion = 1) {
 function renderLegacyChoiceModal() {
   const modal = document.getElementById("legacyEventModal"); if (!modal) return;
   const active = legacyState.activeEvent, definition = dynamicEventDefs[active?.id]; modal.hidden = !active || !definition; if (!active || !definition) return;
-  const target = getKingdom(active.kingdomId); document.getElementById("legacyEventContent").innerHTML = `<div class="world-event-icon">${definition.icon}</div><small>动态世界事件 · ${target?.name || "整个世界"}</small><h2>${definition.name}</h2><p>${definition.text}</p><div class="world-event-choices">${definition.choices.map(choice => `<button data-legacy-event-choice="${choice.id}"><b>${choice.label}</b><span>${choice.hint}</span></button>`).join("")}</div><small class="muted">若不选择，文明将在约 2.5 个纪元后自行决定。</small>`;
+  const target = getKingdom(active.kingdomId); document.getElementById("legacyEventContent").innerHTML = `<div class="world-event-icon">${definition.icon}</div><small>区域事件 · ${target?.name || "整个世界"}</small><h2>${definition.name}</h2><p>${definition.text}</p><div class="world-event-choices">${definition.choices.map(choice => `<button data-legacy-event-choice="${choice.id}"><b>${choice.label}</b><span>${choice.hint}</span></button>`).join("")}</div><small class="muted">事件依据当前世界情境选出主导文明；若不选择，文明将在约 2.5 个纪元后自行决定。</small>`;
 }
 
 function legacySiteLabel(site) { const definition = ruinDefs[site.type]; return site.status === "hidden" ? `？ 未知遗迹` : `${definition.icon} ${definition.name}`; }
@@ -365,7 +364,7 @@ function renderLegacyPanels() {
   }
   if (crisisList) {
     const crisis = legacyState.activeCrisis, challenge = legacyState.challenge, event = legacyState.activeEvent;
-    const eventHtml = event ? `<button class="legacy-event-summary" data-open-legacy-event><b>${dynamicEventDefs[event.id].icon} ${dynamicEventDefs[event.id].name}</b><span>等待世界抉择</span></button>` : `<div class="legacy-next-event"><b>◌ 动态事件平静</b><span>下一事件约在纪元 ${Math.ceil(legacyState.nextEventYear)}</span></div>`;
+    const eventHtml = event ? `<button class="legacy-event-summary" data-open-legacy-event><b>${dynamicEventDefs[event.id].icon} ${dynamicEventDefs[event.id].name}</b><span>等待区域抉择</span></button>` : `<div class="legacy-next-event"><b>◌ 区域事件平静</b><span>下一事件约在纪元 ${Math.ceil(legacyState.nextEventYear)}</span></div>`;
     const crisisHtml = crisis ? `<div class="world-crisis" style="--crisis-color:${crisisDefs[crisis.id].color}"><b>${crisisDefs[crisis.id].icon} ${crisisDefs[crisis.id].name}</b><p>${crisisDefs[crisis.id].text}</p><small>应对进度 ${Math.round(crisis.progress)} / 100 · 截止纪元 ${Math.ceil(crisis.deadline)}</small><i><em style="width:${legacyEngine.clamp(crisis.progress, 0, 100)}%"></em></i><div><button data-crisis-action="coordinate">协调应对</button><button data-crisis-action="relief">组织赈济</button><button data-crisis-action="mobilize">全面动员</button></div></div>` : `<div class="legacy-next-event"><b>◇ 全球危机预警</b><span>下一风险约在纪元 ${Math.ceil(legacyState.nextCrisisYear)}</span></div>`;
     const challengeHtml = challenge ? `<div class="world-challenge"><b>${challengeDefs[challenge.id].icon} ${challengeDefs[challenge.id].name}</b><span>${challengeDefs[challenge.id].text}</span><small>${Math.min(challengeDefs[challenge.id].target, Math.floor(challenge.progress))} / ${challengeDefs[challenge.id].target} · 截止纪元 ${Math.ceil(challenge.deadline)}</small><i><em style="width:${legacyEngine.clamp(challenge.progress / challengeDefs[challenge.id].target * 100, 0, 100)}%"></em></i></div>` : `<div class="legacy-next-event"><b>◇ 新挑战正在酝酿</b><span>约在纪元 ${Math.ceil(legacyState.nextChallengeYear)}</span></div>`;
     crisisList.innerHTML = eventHtml + crisisHtml + challengeHtml;

@@ -50,7 +50,7 @@ test("v16 旧档会迁移派系、席位和议会状态", () => {
   for (const kingdom of legacy.kingdoms) delete kingdom.politics;
   const restored = debug.restore(legacy);
   assert.equal(restored.politics.length, 4);
-  const migrated = debug.saveData(); assert.equal(migrated.version, 18);
+  const migrated = debug.saveData(); assert.equal(migrated.version, 19);
   assert.ok(migrated.kingdoms.every(kingdom => Object.keys(kingdom.politics.factions).length === 5));
   assert.ok(migrated.kingdoms.every(kingdom => Object.values(kingdom.politics.factions).reduce((sum, faction) => sum + faction.seats, 0) === kingdom.politics.councilSize));
 });

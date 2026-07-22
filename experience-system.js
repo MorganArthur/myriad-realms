@@ -18,7 +18,7 @@ const tutorialSteps = Object.freeze([
 let tutorialState = { active: false, step: 0 };
 let experienceUiReady = false;
 let heroes = [], nextHeroId = 1;
-let worldEventState = { nextYear: 14, active: null, pending: null, history: [] };
+let worldEventState = createWorldEventState(14);
 let mapMode = "natural";
 let experienceParticles = [];
 let experienceAudioContext = null;
@@ -51,54 +51,15 @@ const heroNames = Object.freeze({
   orc: ["格罗玛", "乌拉克", "莎迦", "莫格", "拉卡", "杜戈"]
 });
 
-const worldEventChains = Object.freeze({
-  starfall: {
-    name: "星落之谜", icon: "☄", first: "omen", stages: {
-      omen: { title: "群星异动", text: "一道苍白星痕横贯夜空，各文明争论这是祝福、警告还是尚未理解的自然现象。", next: "expedition", choices: [
-        { id: "observe", label: "组织观星", hint: "推动所有文明研究", effect: "research" },
-        { id: "pray", label: "举行祈星祭", hint: "提高合法性与信仰", effect: "faith" },
-        { id: "ignore", label: "安抚民众", hint: "减少动乱并保存国库", effect: "calm" }
-      ] },
-      expedition: { title: "坠星远征", text: "斥候找到了星体坠落之处。灼热晶体蕴含奇异力量，但远征路线穿过危险荒野。", choices: [
-        { id: "shared", label: "联合考察", hint: "改善外交并获得知识", effect: "cooperate" },
-        { id: "claim", label: "强者独占", hint: "强国获益但积累怨恨", effect: "claim" },
-        { id: "seal", label: "封存遗迹", hint: "换取长期稳定", effect: "seal" }
-      ] }
-    }
-  },
-  council: {
-    name: "万邦议会", icon: "⚖", first: "summons", stages: {
-      summons: { title: "议会召集令", text: "商路冲突与边境摩擦日益增多。使节建议召开一次跨文明议会，为共同规则奠定基础。", next: "charter", choices: [
-        { id: "host", label: "共同出资", hint: "消耗国库，增加互信", effect: "host" },
-        { id: "neutral", label: "保持观望", hint: "小幅改善关系", effect: "neutral" },
-        { id: "reject", label: "拒绝议会", hint: "鼓励扩张，增加猜忌", effect: "reject" }
-      ] },
-      charter: { title: "万邦宪章", text: "数月辩论后，使节提出贸易、边界与战俘三项准则。是否签署，将改变未来数十年的外交秩序。", choices: [
-        { id: "peace", label: "签署和平宪章", hint: "大幅提高信任并缓和战争", effect: "charter" },
-        { id: "trade", label: "只签贸易条款", hint: "增加资源与商贸关系", effect: "commerce" },
-        { id: "walkout", label: "退出谈判", hint: "提高尚武文明影响", effect: "walkout" }
-      ] }
-    }
-  },
-  blight: {
-    name: "灰穗之年", icon: "🌾", first: "warning", stages: {
-      warning: { title: "作物异变", text: "灰色斑点正在农田间蔓延。治疗师警告歉收将至，各国必须在冬季前做出准备。", next: "hunger", choices: [
-        { id: "stores", label: "建立储备", hint: "消耗木材，保护粮食", effect: "stores" },
-        { id: "study", label: "研究病穗", hint: "推动农业与医药", effect: "study" },
-        { id: "burn", label: "焚烧病田", hint: "损失部分粮食，快速遏制", effect: "burn" }
-      ] },
-      hunger: { title: "饥馑考验", text: "歉收如期而至。富裕聚落仍有余粮，边境村庄却已出现饥饿，援助还是自保成为时代难题。", choices: [
-        { id: "relief", label: "跨国赈济", hint: "重新分配粮食，提高互信", effect: "relief" },
-        { id: "ration", label: "严格配给", hint: "保存粮食但降低幸福", effect: "ration" },
-        { id: "open", label: "开放粮市", hint: "国库换取粮食与贸易", effect: "open_market" }
-      ] }
-    }
-  }
-});
+const worldEventChains = globalThis.RealmWorldEventContent?.chains || Object.freeze({});
+
+function createWorldEventState(nextYear = 14) {
+  return { nextYear, active: null, pending: null, consequences: [], history: [], memories: [], completed: {}, locked: [], nextConsequenceId: 1, lastChain: null };
+}
 
 function resetExperienceState() {
   heroes = []; nextHeroId = 1; selectedHeroId = null;
-  worldEventState = { nextYear: 12 + experienceEngine.randi(0, 6), active: null, pending: null, history: [] };
+  worldEventState = createWorldEventState(12 + experienceEngine.randi(0, 6));
   experienceParticles = [];
 }
 
@@ -275,65 +236,187 @@ function normalizeExperienceState(savedHeroes, savedNextHeroId, savedEvents) {
   heroes = (Array.isArray(savedHeroes) ? savedHeroes : []).filter(hero => hero && Number.isFinite(Number(hero.id))).slice(0, 80).map(hero => ({ ...hero, id: Number(hero.id), personId: Number(hero.personId), kingdomId: Number(hero.kingdomId), name: experienceEngine.cleanText(hero.name) || "无名英雄", archetype: heroArchetypes[hero.archetype] ? hero.archetype : "statesman", level: experienceEngine.clamp(Math.floor(Number(hero.level) || 1), 1, 5), renown: Math.max(0, Number(hero.renown) || 0), victories: Math.max(0, Number(hero.victories) || 0), status: hero.status === "legacy" ? "legacy" : "active" }));
   nextHeroId = Math.max(Number(savedNextHeroId) || 1, 1, ...heroes.map(hero => hero.id + 1));
   for (const person of people) person.heroId = heroes.some(hero => hero.id === Number(person.heroId) && hero.personId === person.id) ? Number(person.heroId) : null;
-  worldEventState = savedEvents && typeof savedEvents === "object" ? { nextYear: Number(savedEvents.nextYear) || year + 12, active: savedEvents.active || null, pending: savedEvents.pending || null, history: Array.isArray(savedEvents.history) ? savedEvents.history.slice(0, 40) : [] } : { nextYear: year + 12, active: null, pending: null, history: [] };
+  const source = savedEvents && typeof savedEvents === "object" ? savedEvents : createWorldEventState(year + 12);
+  const normalizeParticipants = entries => (Array.isArray(entries) ? entries : []).map((entry, index) => ({ role: experienceEngine.cleanText(entry?.role) || `参与国 ${index + 1}`, kingdomId: Number(entry?.kingdomId ?? entry) })).filter(entry => getKingdom(entry.kingdomId)).slice(0, 4);
+  const normalizeProgress = (progress, pending = false) => {
+    const definition = worldEventChains[progress?.chain], chapter = definition?.stages?.[progress?.stage]; if (!definition || !chapter) return null;
+    const participants = normalizeParticipants(progress.participants); return { chain: progress.chain, stage: progress.stage, startedYear: Math.max(1, Number(progress.startedYear) || Math.floor(year)), resumeAfterChoice: Boolean(progress.resumeAfterChoice), participants: participants.length ? participants : selectWorldEventParticipants(definition), path: Array.isArray(progress.path) ? progress.path.map(experienceEngine.cleanText).filter(Boolean).slice(-8) : [], ...(pending ? { availableYear: Math.max(year, Number(progress.availableYear) || year + 3) } : {}) };
+  };
+  const completed = {}; for (const [id, count] of Object.entries(source.completed || {})) if (worldEventChains[id]) completed[id] = Math.max(0, Math.floor(Number(count) || 0));
+  const consequences = (Array.isArray(source.consequences) ? source.consequences : []).filter(item => item && worldEventChains[item.chain] && Array.isArray(item.effects)).slice(0, 80).map((item, index) => ({ id: Math.max(1, Number(item.id) || index + 1), chain: item.chain, choice: experienceEngine.cleanText(item.choice) || "legacy", dueYear: Math.max(year, Number(item.dueYear) || year + 1), text: experienceEngine.cleanText(item.text) || "旧日抉择产生了新的后果。", effects: item.effects, participantIds: (Array.isArray(item.participantIds) ? item.participantIds : []).map(Number).filter(id => getKingdom(id)).slice(0, 4) }));
+  worldEventState = {
+    nextYear: Math.max(year, Number(source.nextYear) || year + 12), active: normalizeProgress(source.active), pending: normalizeProgress(source.pending, true), consequences,
+    history: (Array.isArray(source.history) ? source.history : []).filter(entry => entry && worldEventChains[entry.chain]).slice(0, 120).map(entry => ({ ...entry, year: Math.max(1, Number(entry.year) || 1), participantIds: (Array.isArray(entry.participantIds) ? entry.participantIds : []).map(Number).filter(id => getKingdom(id)).slice(0, 4) })),
+    memories: (Array.isArray(source.memories) ? source.memories : []).filter(memory => memory && worldEventChains[memory.chain]).slice(0, 80).map(memory => ({ ...memory, year: Math.max(1, Number(memory.year) || 1), text: experienceEngine.cleanText(memory.text), participantIds: (Array.isArray(memory.participantIds) ? memory.participantIds : []).map(Number).filter(id => getKingdom(id)).slice(0, 4) })),
+    completed, locked: [...new Set((Array.isArray(source.locked) ? source.locked : []).filter(id => worldEventChains[id]))], nextConsequenceId: Math.max(Number(source.nextConsequenceId) || 1, 1, ...consequences.map(item => item.id + 1)), lastChain: worldEventChains[source.lastChain] ? source.lastChain : null
+  };
 }
 
 function eventStage(active = worldEventState.active) { return active ? worldEventChains[active.chain]?.stages?.[active.stage] || null : null; }
 
-function activateWorldEvent(chain, stage) {
-  const definition = worldEventChains[chain], chapter = definition?.stages?.[stage]; if (!chapter) return;
+function worldEventContext() {
+  const active = kingdoms.filter(kingdom => !kingdom.defeated), wars = active.reduce((sum, kingdom) => sum + Object.values(kingdom.relations || {}).filter(relation => relation.status === "war").length, 0) / 2;
+  const average = selector => active.length ? active.reduce((sum, kingdom) => sum + selector(kingdom), 0) / active.length : 0;
+  return { year, kingdoms: active.length, wars, tradeRoutes: tradeRoutes.length, dynasties: active.filter(kingdom => kingdom.dynasty?.rulerId).length, guildInfluence: average(kingdom => kingdom.politics?.factions?.guilds?.influence || 0), faith: average(kingdom => kingdom.culture?.values?.faith || 0), valor: average(kingdom => kingdom.culture?.values?.valor || 0), animals: animals.filter(animal => !animal.dead).length, disasters: worldStats.disastersTriggered || 0, ruins: typeof legacySites === "undefined" ? 0 : legacySites.length };
+}
+
+function worldEventChainEligible(chainId, context = worldEventContext()) {
+  const definition = worldEventChains[chainId]; if (!definition || worldEventState.locked.includes(chainId)) return false;
+  const conditions = definition.conditions || {};
+  return context.year >= (conditions.minYear || 0) && context.kingdoms >= (conditions.minKingdoms || 1) && context.wars >= (conditions.minWars || 0) && context.tradeRoutes >= (conditions.minTradeRoutes || 0) && context.dynasties >= (conditions.minDynasties || 0) && context.guildInfluence >= (conditions.minGuildInfluence || 0) && context.faith >= (conditions.minFaith || 0) && context.valor >= (conditions.minValor || 0) && context.animals >= (conditions.minAnimals || 0) && context.disasters >= (conditions.minDisasters || 0) && context.ruins >= (conditions.minRuins || 0);
+}
+
+function worldEventFocusScore(kingdom, focus) {
+  const population = peopleOfKingdom(kingdom.id).length, tech = typeof totalTechnologyLevel === "function" ? totalTechnologyLevel(kingdom) : Number(kingdom.technology?.research) || 0;
+  if (focus === "food") return kingdom.resources?.food || 0;
+  if (focus === "weakest") return -(population * 3 + (kingdom.legitimacy || 0) + (kingdom.resources?.food || 0) * .2);
+  if (focus === "dynasty") return (kingdom.dynasty?.disputed ? 80 : 0) + (kingdom.dynasty?.prestige || 0) + population;
+  if (focus === "guilds") return (kingdom.politics?.factions?.guilds?.influence || 0) * 2 + (kingdom.treasury || 0) * .08;
+  if (focus === "faith") return (kingdom.culture?.values?.faith || 0) * 2 + (kingdom.legitimacy || 0);
+  if (focus === "navigation") return (typeof technologyLevel === "function" ? technologyLevel(kingdom, "navigation") : 0) * 35 + tradeRoutes.filter(route => getVillage(route.fromVillage)?.kingdom === kingdom.id || getVillage(route.toVillage)?.kingdom === kingdom.id).length * 12;
+  if (focus === "heroes") return heroes.filter(hero => hero.status === "active" && hero.kingdomId === kingdom.id).reduce((sum, hero) => sum + hero.level * 9, 0) + population;
+  if (focus === "legacy") return (typeof artifacts === "undefined" ? 0 : artifacts.filter(artifact => artifact.kingdomId === kingdom.id).length * 30) + tech;
+  if (focus === "military") return armies.filter(army => army.kingdomId === kingdom.id).reduce((sum, army) => sum + army.soldierIds.length, 0) * 3 + (kingdom.culture?.values?.valor || 0) + population;
+  if (focus === "diplomacy") return Object.values(kingdom.relations || {}).reduce((sum, relation) => sum + (relation.trust || 0), 0) + tradeRoutes.length;
+  if (focus === "disaster") return population + (kingdom.resources?.stone || 0) * .2 - (kingdom.unrest || 0);
+  return tech * 10 + (kingdom.technology?.research || 0) + population;
+}
+
+function selectWorldEventParticipants(definition) {
+  const active = kingdoms.filter(kingdom => !kingdom.defeated).sort((a, b) => worldEventFocusScore(b, definition.focus) - worldEventFocusScore(a, definition.focus) || a.id - b.id);
+  const count = Math.min(active.length, Math.max(1, definition.roles?.length || 3));
+  return active.slice(0, count).map((kingdom, index) => ({ role: definition.roles?.[index] || `参与国 ${index + 1}`, kingdomId: kingdom.id }));
+}
+
+function activateWorldEvent(chain, stage = worldEventChains[chain]?.first, options = {}) {
+  const definition = worldEventChains[chain], chapter = definition?.stages?.[stage]; if (!chapter || (worldEventState.active && !options.force) || (!options.force && !worldEventChainEligible(chain))) return false;
   const resumeAfterChoice = typeof running !== "undefined" && running && !debugBatchMode;
-  worldEventState.active = { chain, stage, startedYear: Math.floor(year), resumeAfterChoice }; worldEventState.pending = null;
+  const participants = Array.isArray(options.participants) && options.participants.length ? options.participants : selectWorldEventParticipants(definition);
+  worldEventState.active = { chain, stage, startedYear: Math.floor(year), resumeAfterChoice, participants, path: Array.isArray(options.path) ? options.path.slice(-8) : [] }; worldEventState.pending = null;
   addEvent(`${definition.icon} 世界事件“${chapter.title}”正在等待抉择。`, "world-event");
   if (resumeAfterChoice) setRunning(false, false);
   renderActiveWorldEvent(); renderExperiencePanels(); playExperienceSound("event");
+  return true;
 }
 
-function applyWorldEventEffect(effect) {
-  const active = kingdoms.filter(kingdom => !kingdom.defeated), sorted = [...active].sort((a, b) => peopleOfKingdom(b.id).length - peopleOfKingdom(a.id).length);
-  if (effect === "research" || effect === "study") for (const kingdom of active) { kingdom.technology.research += effect === "study" ? 10 : 7; if (effect === "study") kingdom.resources.food = Math.max(0, kingdom.resources.food - 5); }
-  if (effect === "faith") for (const kingdom of active) { kingdom.legitimacy = experienceEngine.clamp(kingdom.legitimacy + 6, 0, 100); kingdom.culture.values.faith = experienceEngine.clamp(kingdom.culture.values.faith + 4, 0, 100); }
-  if (["calm", "seal"].includes(effect)) for (const kingdom of active) kingdom.unrest = experienceEngine.clamp(kingdom.unrest - 7, 0, 100);
-  if (["cooperate", "host", "charter", "relief", "neutral"].includes(effect)) for (let i = 0; i < active.length; i++) for (let j = i + 1; j < active.length; j++) {
-    const relation = relationBetween(active[i].id, active[j].id); if (!relation) continue;
-    const cooperationGain = effect === "charter" ? 10 : effect === "neutral" ? 1 : effect === "relief" ? 3 : 4;
-    relation.score = experienceEngine.clamp(relation.score + cooperationGain, -100, 100);
-    const reverse = relationBetween(active[j].id, active[i].id); if (reverse) reverse.score = relation.score;
-    recordDiplomaticMemory(active[i].id, active[j].id, "cooperation", "共同应对了一场世界事件", effect === "neutral" ? 1 : effect === "charter" ? 6 : 3, effect === "neutral" ? 0 : -3);
-    if (effect === "charter" && relation.status === "war") setRelation(active[i].id, active[j].id, "peace", Math.max(-8, relation.score));
+function worldEventTargetKingdoms(scope, participantIds) {
+  const active = kingdoms.filter(kingdom => !kingdom.defeated), participants = participantIds.map(getKingdom).filter(kingdom => kingdom && !kingdom.defeated);
+  if (scope === "primary") return participants.slice(0, 1);
+  if (scope === "rival") return participants.slice(1, 2);
+  if (scope === "participants") return participants;
+  if (scope === "weakest") return [...active].sort((a, b) => peopleOfKingdom(a.id).length - peopleOfKingdom(b.id).length || a.id - b.id).slice(0, 1);
+  if (scope === "strongest") return [...active].sort((a, b) => peopleOfKingdom(b.id).length - peopleOfKingdom(a.id).length || a.id - b.id).slice(0, 1);
+  return active;
+}
+
+function applyRealmEventEffect(effect, participantIds) {
+  for (const kingdom of worldEventTargetKingdoms(effect.scope, participantIds)) {
+    for (const resource of ["food", "wood", "stone"]) if (Number.isFinite(effect[resource])) kingdom.resources[resource] = Math.max(0, (kingdom.resources[resource] || 0) + effect[resource]);
+    if (Number.isFinite(effect.treasury)) kingdom.treasury = Math.max(0, (kingdom.treasury || 0) + effect.treasury);
+    if (Number.isFinite(effect.research)) kingdom.technology.research = Math.max(0, (kingdom.technology.research || 0) + effect.research);
+    for (const field of ["legitimacy", "unrest", "warWeariness"]) if (Number.isFinite(effect[field])) kingdom[field] = experienceEngine.clamp((kingdom[field] || 0) + effect[field], 0, 100);
+    for (const field of ["faith", "valor"]) if (Number.isFinite(effect[field])) kingdom.culture.values[field] = experienceEngine.clamp((kingdom.culture.values[field] || 0) + effect[field], 0, 100);
+    if (Number.isFinite(effect.influence)) kingdom.culture.influence = Math.max(0, (kingdom.culture.influence || 0) + effect.influence);
+    for (const [field, target] of [["cohesion", "cohesion"], ["authority", "authority"]]) if (Number.isFinite(effect[field]) && kingdom.politics) kingdom.politics[target] = experienceEngine.clamp((kingdom.politics[target] || 0) + effect[field], 0, 100);
+    if (Number.isFinite(effect.guildInfluence) && kingdom.politics?.factions?.guilds) kingdom.politics.factions.guilds.influence = experienceEngine.clamp(kingdom.politics.factions.guilds.influence + effect.guildInfluence, 0, 100);
+    if (Number.isFinite(effect.armyMorale)) for (const army of armies.filter(candidate => candidate.kingdomId === kingdom.id)) army.morale = experienceEngine.clamp(army.morale + effect.armyMorale, 0, 100);
+    if (["happiness", "health", "plague"].some(field => Number.isFinite(effect[field]))) for (const person of peopleOfKingdom(kingdom.id).slice(0, 50)) {
+      if (Number.isFinite(effect.happiness)) person.happiness = experienceEngine.clamp((person.happiness || 0) + effect.happiness, 0, 100);
+      if (Number.isFinite(effect.health)) { person.health = Math.max(1, person.health + effect.health); person.needs ||= {}; person.needs.health = experienceEngine.clamp((person.needs.health || 50) + effect.health, 0, 100); }
+      if (Number.isFinite(effect.plague)) person.plague = Math.max(0, (person.plague || 0) + effect.plague);
+    }
   }
-  if (effect === "claim" && sorted[0]) { sorted[0].technology.research += 22; sorted[0].treasury += 25; for (const other of sorted.slice(1)) recordDiplomaticMemory(sorted[0].id, other.id, "grievance", "独占了坠星遗物", -10, 16); }
-  if (effect === "stores") for (const kingdom of active) { kingdom.resources.wood = Math.max(0, kingdom.resources.wood - 12); kingdom.resources.food += 16; }
-  if (effect === "burn") for (const kingdom of active) { kingdom.resources.food = Math.max(0, kingdom.resources.food - 12); kingdom.unrest = experienceEngine.clamp(kingdom.unrest - 3, 0, 100); }
-  if (effect === "relief" && sorted.length) { const average = sorted.reduce((sum, kingdom) => sum + kingdom.resources.food, 0) / sorted.length; for (const kingdom of sorted) kingdom.resources.food = kingdom.resources.food * .55 + average * .45; }
-  if (effect === "ration") for (const kingdom of active) { kingdom.resources.food += 12; for (const person of peopleOfKingdom(kingdom.id).slice(0, 30)) person.happiness = experienceEngine.clamp(person.happiness - 5, 0, 100); }
-  if (["commerce", "open_market"].includes(effect)) for (const kingdom of active) { kingdom.treasury = Math.max(0, kingdom.treasury - (effect === "open_market" ? 8 : 0)) + 8; kingdom.resources.food += effect === "open_market" ? 14 : 4; }
-  if (["reject", "walkout"].includes(effect)) for (const kingdom of active) { kingdom.culture.values.valor = experienceEngine.clamp(kingdom.culture.values.valor + 3, 0, 100); kingdom.unrest = experienceEngine.clamp(kingdom.unrest + 2, 0, 100); }
+}
+
+function applyDiplomaticEventEffect(effect, participantIds) {
+  const targets = worldEventTargetKingdoms(effect.scope, participantIds);
+  for (let first = 0; first < targets.length; first++) for (let second = first + 1; second < targets.length; second++) {
+    const a = targets[first], b = targets[second], relation = relationBetween(a.id, b.id); if (!relation) continue;
+    if (effect.peace && relation.status === "war") setRelation(a.id, b.id, "peace", Math.max(-8, relation.score));
+    const current = relationBetween(a.id, b.id); if (!current) continue;
+    current.score = experienceEngine.clamp(current.score + (effect.score || 0), -100, 100); const reverse = relationBetween(b.id, a.id); if (reverse) reverse.score = current.score;
+    recordDiplomaticMemory(a.id, b.id, effect.grievance > 0 ? "grievance" : "world-event", "共同经历了一场改变时代的事件", effect.trust || 0, effect.grievance || 0);
+  }
+}
+
+function applyWorldScaleEventEffect(effect, participantIds) {
+  if (Number.isFinite(effect.fertility) || Number.isFinite(effect.biomass)) for (const tile of tiles) if (isLand(tile)) {
+    if (Number.isFinite(effect.fertility)) tile.fertility = experienceEngine.clamp((tile.fertility || 0) + effect.fertility, 0, 1);
+    if (Number.isFinite(effect.biomass)) tile.biomass = experienceEngine.clamp((tile.biomass || 0) + effect.biomass, 0, 1);
+  }
+  if (Number.isFinite(effect.heroRenown)) for (const hero of heroes.filter(hero => hero.status === "active" && (!participantIds.length || participantIds.includes(hero.kingdomId)))) hero.renown += effect.heroRenown;
+  if (Number.isFinite(effect.shortenDisasters)) for (const disaster of activeDisasters) disaster.duration = Math.max(1, disaster.duration - effect.shortenDisasters);
+  if (Number.isFinite(effect.revealRuins) && typeof legacySites !== "undefined") {
+    const primaryId = participantIds[0] ?? kingdoms.find(kingdom => !kingdom.defeated)?.id;
+    for (const site of legacySites.filter(site => site.status === "hidden").slice(0, Math.max(0, Math.floor(effect.revealRuins)))) { site.status = "exploring"; site.kingdomId = primaryId ?? null; site.discoveredYear = Math.floor(year); site.progress = Math.max(site.progress || 0, 12); }
+  }
+  if (Number.isFinite(effect.wonderProgress) && typeof wonders !== "undefined") for (const wonder of wonders.filter(wonder => wonder.status === "building")) wonder.progress = experienceEngine.clamp(wonder.progress + effect.wonderProgress, 0, 100);
+}
+
+function applyWorldEventEffects(effects, participantIds = []) {
+  for (const effect of Array.isArray(effects) ? effects : []) {
+    if (effect?.type === "realm") applyRealmEventEffect(effect, participantIds);
+    if (effect?.type === "diplomacy") applyDiplomaticEventEffect(effect, participantIds);
+    if (effect?.type === "world") applyWorldScaleEventEffect(effect, participantIds);
+  }
+}
+
+function rememberWorldEvent(active, choice, stage) {
+  const participantIds = active.participants.map(participant => participant.kingdomId), chain = worldEventChains[active.chain], text = `${chain.name}·${stage.title}：${choice.ending || choice.label}`;
+  const memory = { year: Math.floor(year), chain: active.chain, stage: active.stage, choice: choice.id, text, participantIds }; worldEventState.memories.unshift(memory); worldEventState.memories = worldEventState.memories.slice(0, 80);
+  for (let first = 0; first < participantIds.length; first++) for (let second = first + 1; second < participantIds.length; second++) {
+    recordDiplomaticMemory(participantIds[first], participantIds[second], "world-event", text, 0, 0);
+    const firstRuler = getKingdom(participantIds[first])?.dynasty?.rulerId, secondRuler = getKingdom(participantIds[second])?.dynasty?.rulerId;
+    if (firstRuler && secondRuler && typeof recordPersonalMemory === "function") recordPersonalMemory(firstRuler, secondRuler, "world-event", text, 0, 0, 0);
+  }
+  return memory;
+}
+
+function queueWorldEventConsequence(active, choice) {
+  if (!choice.delayed?.effects?.length) return;
+  worldEventState.consequences.push({ id: worldEventState.nextConsequenceId++, chain: active.chain, choice: choice.id, dueYear: year + Math.max(1, Number(choice.delayed.after) || 1), text: choice.delayed.text, effects: choice.delayed.effects, participantIds: active.participants.map(participant => participant.kingdomId) });
+  worldEventState.consequences = worldEventState.consequences.slice(-80);
+}
+
+function processWorldEventConsequences() {
+  const due = worldEventState.consequences.filter(item => item.dueYear <= year), waiting = worldEventState.consequences.filter(item => item.dueYear > year); if (!due.length) return;
+  worldEventState.consequences = waiting;
+  for (const consequence of due) { applyWorldEventEffects(consequence.effects, consequence.participantIds); addEvent(`⌛ ${consequence.text}`, "world-event"); worldEventState.memories.unshift({ year: Math.floor(year), chain: consequence.chain, stage: "consequence", choice: consequence.choice, text: consequence.text, participantIds: consequence.participantIds }); }
+  worldEventState.memories = worldEventState.memories.slice(0, 80);
 }
 
 function resolveWorldEvent(choiceId, automatic = false) {
   const active = worldEventState.active, stage = eventStage(active); if (!active || !stage) return false;
   const resumeAfterChoice = Boolean(active.resumeAfterChoice);
   const choice = stage.choices.find(candidate => candidate.id === choiceId) || stage.choices[0];
-  applyWorldEventEffect(choice.effect);
+  const participantIds = active.participants.map(participant => participant.kingdomId); applyWorldEventEffects(choice.effects, participantIds); queueWorldEventConsequence(active, choice);
   worldStats.worldEventsResolved = (worldStats.worldEventsResolved || 0) + 1;
-  worldEventState.history.unshift({ chain: active.chain, stage: active.stage, choice: choice.id, year: Math.floor(year) }); worldEventState.history = worldEventState.history.slice(0, 40);
+  const memory = rememberWorldEvent(active, choice, stage); worldEventState.history.unshift({ ...memory, ending: choice.ending || null }); worldEventState.history = worldEventState.history.slice(0, 120);
+  for (const locked of choice.locks || []) if (worldEventChains[locked] && !worldEventState.locked.includes(locked)) worldEventState.locked.push(locked);
   addEvent(`${worldEventChains[active.chain].name}：${automatic ? "各文明最终" : "创世者引导文明"}选择了“${choice.label}”。`, "world-event");
   spawnExperienceEffect("event", MAP_W / 2, MAP_H / 2, "#e7c269");
-  if (stage.next) worldEventState.pending = { chain: active.chain, stage: stage.next, availableYear: year + 3 + experienceEngine.randi(0, 3) };
-  else worldEventState.nextYear = year + 13 + experienceEngine.randi(0, 10);
+  const nextStage = choice.next === null ? null : choice.next || stage.next;
+  if (nextStage) worldEventState.pending = { chain: active.chain, stage: nextStage, availableYear: year + 3 + experienceEngine.randi(0, 3), startedYear: Math.floor(year), resumeAfterChoice: false, participants: active.participants, path: [...active.path, choice.id].slice(-8) };
+  else { worldEventState.completed[active.chain] = (worldEventState.completed[active.chain] || 0) + 1; worldEventState.lastChain = active.chain; worldEventState.nextYear = year + 10 + experienceEngine.randi(0, 8); }
   worldEventState.active = null; renderActiveWorldEvent(); updateUI(); if (resumeAfterChoice && !automatic) setRunning(true, false); return true;
 }
 
+function chooseNextWorldEventChain() {
+  const eligible = Object.keys(worldEventChains).filter(id => worldEventChainEligible(id)); if (!eligible.length) return null;
+  const unseen = eligible.filter(id => !(worldEventState.completed[id] > 0) && id !== worldEventState.lastChain), pool = unseen.length ? unseen : eligible.filter(id => id !== worldEventState.lastChain);
+  const choices = pool.length ? pool : eligible; return choices[experienceEngine.randi(0, choices.length - 1)];
+}
+
 function worldEventStep() {
+  processWorldEventConsequences();
   if (worldEventState.active) {
     if (year - worldEventState.active.startedYear > 2.5) { const stage = eventStage(); resolveWorldEvent(stage.choices[experienceEngine.randi(0, stage.choices.length - 1)].id, true); }
     return;
   }
   if (typeof legacyState !== "undefined" && (legacyState.activeEvent || legacyState.activeCrisis)) return;
-  if (worldEventState.pending && year >= worldEventState.pending.availableYear) { activateWorldEvent(worldEventState.pending.chain, worldEventState.pending.stage); return; }
+  if (worldEventState.pending && year >= worldEventState.pending.availableYear) { const pending = worldEventState.pending; activateWorldEvent(pending.chain, pending.stage, { force: true, participants: pending.participants, path: pending.path }); return; }
   if (!worldEventState.pending && year >= worldEventState.nextYear) {
-    const ids = Object.keys(worldEventChains), chain = ids[experienceEngine.randi(0, ids.length - 1)]; activateWorldEvent(chain, worldEventChains[chain].first);
+    const chain = chooseNextWorldEventChain(); if (chain) activateWorldEvent(chain); else worldEventState.nextYear = year + 4;
   }
 }
 
@@ -425,8 +508,9 @@ function toggleExperienceAudio() {
 function renderActiveWorldEvent() {
   const modal = document.getElementById("worldEventModal"); if (!modal) return;
   const active = worldEventState.active, stage = eventStage(active); modal.hidden = !active || !stage; if (!active || !stage) return;
-  const chain = worldEventChains[active.chain];
-  document.getElementById("worldEventContent").innerHTML = `<div class="world-event-icon">${chain.icon}</div><small>${chain.name} · 阶段事件</small><h2>${stage.title}</h2><p>${stage.text}</p><div class="world-event-choices">${stage.choices.map(choice => `<button data-world-event-choice="${choice.id}"><b>${choice.label}</b><span>${choice.hint}</span></button>`).join("")}</div><small class="muted">若不选择，文明将在约 2.5 个纪元后自行决定。</small>`;
+  const chain = worldEventChains[active.chain], stages = Object.keys(chain.stages), chapter = stages.indexOf(active.stage) + 1;
+  const participants = active.participants.map(participant => `${participant.role}：${getKingdom(participant.kingdomId)?.name || "失落文明"}`).join(" · ");
+  document.getElementById("worldEventContent").innerHTML = `<div class="world-event-icon">${chain.icon}</div><small>${chain.name} · 第 ${chapter} / ${stages.length} 章</small><h2>${stage.title}</h2><p>${stage.text}</p><div class="world-event-participants">${participants}</div><div class="world-event-choices">${stage.choices.map(choice => `<button data-world-event-choice="${choice.id}"><b>${choice.label}</b><span>${choice.hint}</span>${choice.delayed ? `<small>⌛ 将在约 ${choice.delayed.after} 个纪元后产生后果</small>` : ""}</button>`).join("")}</div><small class="muted">若不选择，文明将在约 2.5 个纪元后自行决定；选择会写入外交、人物与世界历史。</small>`;
 }
 
 function inspectHero(heroId) {
@@ -445,8 +529,9 @@ function renderExperiencePanels() {
   }
   const eventSummary = document.getElementById("worldEventSummary");
   if (eventSummary) {
-    const active = worldEventState.active, pending = worldEventState.pending;
-    eventSummary.innerHTML = active ? `<button class="world-event-summary active" data-open-world-event><b>${worldEventChains[active.chain].icon} ${eventStage(active).title}</b><span>等待世界抉择</span></button>` : pending ? `<div class="world-event-summary"><b>${worldEventChains[pending.chain].icon} ${worldEventChains[pending.chain].name}</b><span>下一阶段约在纪元 ${Math.ceil(pending.availableYear)}</span></div>` : `<div class="world-event-summary"><b>◌ 世界暂时平静</b><span>下一重大事件约在纪元 ${Math.ceil(worldEventState.nextYear)}</span></div>`;
+    const active = worldEventState.active, pending = worldEventState.pending, consequence = [...worldEventState.consequences].sort((a, b) => a.dueYear - b.dueYear)[0], latest = worldEventState.memories[0];
+    const participants = progress => progress.participants.map(item => getKingdom(item.kingdomId)?.name).filter(Boolean).join("、");
+    eventSummary.innerHTML = active ? `<button class="world-event-summary active" data-open-world-event><b>${worldEventChains[active.chain].icon} ${eventStage(active).title}</b><span>${participants(active)} · 等待世界抉择</span></button>` : pending ? `<div class="world-event-summary"><b>${worldEventChains[pending.chain].icon} ${worldEventChains[pending.chain].name}</b><span>${participants(pending)} · 下一章约在纪元 ${Math.ceil(pending.availableYear)}</span></div>` : `<div class="world-event-summary"><b>◌ 世界暂时平静</b><span>下一重大事件约在纪元 ${Math.ceil(worldEventState.nextYear)}</span>${consequence ? `<small>⌛ “${consequence.text}”将在纪元 ${Math.ceil(consequence.dueYear)} 显现</small>` : latest ? `<small>最近记忆：${latest.text}</small>` : ""}</div>`;
   }
   if (selectedHeroId !== null) inspectHero(selectedHeroId);
 }
@@ -470,7 +555,7 @@ function renderCodex(tab = "peoples") {
       { icon: "🗿", title: "遗迹与神器", text: "斥候会发现地图遗迹，文明持续考察后可寻得具有长期效果的神器。" },
       { icon: "🏗", title: "世界奇观", text: "进入城邦纪的文明能够投入木石、国库和工程劳力，分阶段建造独一无二的奇观。" },
       { icon: "🛡", title: "危机与挑战", text: "全球危机要求各文明共同响应；轮换世界挑战则提供有期限的长期目标与声望奖励。" },
-      { icon: "📜", title: "世界事件链", text: "重大事件分阶段展开，抉择会改变资源、研究、社会和外交。" },
+      { icon: "📜", title: "世界事件链", text: "十二条大型事件链各含三章，并记录参与文明、互斥路线、即时选择、延迟后果以及外交和人物记忆。" },
       { icon: "🗺", title: "地图模式", text: "自然、政治、肥力、人口和外交视图从不同维度解释同一世界。" },
       { icon: "💾", title: "确定性存档", text: "世界种子、随机状态、人物家谱、王朝和派系政治共同保存，可从同一时间线继续演化。" }
     ]

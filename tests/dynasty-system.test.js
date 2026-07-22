@@ -18,13 +18,13 @@ test("新世界为四种政体建立具名统治者与合法继承序列", () =>
   assert.equal(new Set(names).size, names.length);
 });
 
-test("婚姻与双向人物关系会随模拟形成并写入 v18 存档", () => {
+test("婚姻与双向人物关系会随模拟形成并写入 v19 存档", () => {
   const { debug } = createWorldRuntime();
   debug.generate("dynasty-marriages");
   debug.setRandomDisasters(false);
   debug.step(300);
   const save = debug.saveData();
-  assert.equal(save.version, 18);
+  assert.equal(save.version, 19);
   assert.ok(save.worldStats.marriages >= 4);
   const married = save.people.filter(person => person.spouseId);
   assert.ok(married.length >= 8);

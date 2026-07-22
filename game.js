@@ -2198,7 +2198,12 @@ function debugSnapshot() {
     politics: activeKingdoms.map(kingdom => [kingdom.id, kingdom.politics?.dominantFaction || null, round3(kingdom.politics?.cohesion || 0), round3(kingdom.politics?.authority || 0), kingdom.politics?.activeIssue ? [kingdom.politics.activeIssue.faction, kingdom.politics.activeIssue.domain, kingdom.politics.activeIssue.proposed] : null, Object.entries(kingdom.politics?.factions || {}).map(([id, faction]) => [id, round3(faction.support), round3(faction.influence), round3(faction.radicalization), faction.seats])]),
     legacy: { sites: legacySites.map(site => [site.id, site.type, site.status, round3(site.progress), site.kingdomId, site.artifactId]), artifacts: artifacts.map(artifact => [artifact.id, artifact.type, artifact.kingdomId, artifact.siteId]), wonders: wonders.map(wonder => [wonder.id, wonder.type, wonder.kingdomId, wonder.status, round3(wonder.progress)]), activeEvent: legacyState.activeEvent ? [legacyState.activeEvent.id, legacyState.activeEvent.kingdomId] : null, activeCrisis: legacyState.activeCrisis ? [legacyState.activeCrisis.id, round3(legacyState.activeCrisis.progress), round3(legacyState.activeCrisis.deadline)] : null, challenge: legacyState.challenge ? [legacyState.challenge.id, round3(legacyState.challenge.progress), round3(legacyState.challenge.deadline)] : null },
     heroes: heroes.filter(hero => hero.status === "active").map(hero => [hero.id, hero.kingdomId, hero.level, round3(hero.renown), hero.victories]),
-    worldEvents: worldEventState.history.map(entry => [entry.chain, entry.stage, entry.choice, entry.year]),
+    worldEvents: worldEventState.history.map(entry => [entry.chain, entry.stage, entry.choice, entry.year, entry.participantIds || []]),
+    worldEvent: {
+      active: worldEventState.active ? [worldEventState.active.chain, worldEventState.active.stage, worldEventState.active.participants.map(participant => [participant.role, participant.kingdomId])] : null,
+      pending: worldEventState.pending ? [worldEventState.pending.chain, worldEventState.pending.stage, round3(worldEventState.pending.availableYear), worldEventState.pending.participants.map(participant => [participant.role, participant.kingdomId])] : null,
+      consequences: worldEventState.consequences.map(item => [item.id, item.chain, item.choice, round3(item.dueYear), item.participantIds]), completed: Object.entries(worldEventState.completed).sort(([a], [b]) => a.localeCompare(b)), locked: [...worldEventState.locked].sort(), memories: worldEventState.memories.map(memory => [memory.chain, memory.stage, memory.choice, memory.year, memory.participantIds])
+    },
     history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries, marriages: worldStats.marriages || 0, successions: worldStats.successions || 0, successionCrises: worldStats.successionCrises || 0, politicalResolutions: worldStats.politicalResolutions || 0, politicalCrises: worldStats.politicalCrises || 0, dynamicEventsResolved: worldStats.dynamicEventsResolved || 0, artifactsFound: worldStats.artifactsFound || 0, wondersCompleted: worldStats.wondersCompleted || 0, crisesResolved: worldStats.crisesResolved || 0, challengesCompleted: worldStats.challengesCompleted || 0 }
   };
 }
@@ -2214,6 +2219,12 @@ globalThis.RealmDebug = Object.freeze({
   setRandomDisasters: enabled => { randomDisastersEnabled = Boolean(enabled); return randomDisastersEnabled; },
   resolvePolitics: (kingdomId, action = "compromise") => { resolvePoliticalIssue(Number(kingdomId), action, false); return debugSnapshot(); },
   triggerPoliticsCrisis: (kingdomId, factionId) => { const kingdom = getKingdom(Number(kingdomId)); if (kingdom && factionDefs[factionId]) triggerFactionCrisis(kingdom, factionId); return debugSnapshot(); },
+  regionalEventCatalog: () => Object.fromEntries(Object.entries(dynamicEventDefs).map(([id, definition]) => [id, { name: definition.name, focus: definition.focus, conditions: { ...definition.conditions }, choices: definition.choices.map(choice => choice.id) }])),
+  regionalEventEligibility: (id, kingdomId = 0) => regionalEventConditionsMet(dynamicEventDefs[id], getKingdom(Number(kingdomId))),
+  worldEventCatalog: () => Object.fromEntries(Object.entries(worldEventChains).map(([id, definition]) => [id, { name: definition.name, conditions: { ...definition.conditions }, stages: Object.keys(definition.stages), choices: Object.values(definition.stages).map(stage => stage.choices.map(choice => choice.id)) }])),
+  worldEventEligibility: chain => worldEventChainEligible(chain),
+  triggerWorldEvent: (chain, stage) => { activateWorldEvent(chain, stage || worldEventChains[chain]?.first, { force: true }); return debugSnapshot(); },
+  resolveWorldEvent: choice => { resolveWorldEvent(choice, false); return debugSnapshot(); },
   triggerLegacyEvent: id => { activateDynamicEvent(id); return debugSnapshot(); },
   resolveLegacyEvent: choice => { resolveDynamicEvent(choice, false); return debugSnapshot(); },
   triggerWorldCrisis: type => { triggerWorldCrisis(type); return debugSnapshot(); },

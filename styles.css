@@ -387,9 +387,10 @@ footer { padding: 0 16px; border-top-color: #3a4633; background: linear-gradient
 .world-event-summary { width: 100%; padding: 8px 9px; border: 1px solid #5b5f42; border-radius: 7px; color: #cfc8a9; background: linear-gradient(145deg, #1f271d, #141913); text-align: left; }
 button.world-event-summary { cursor: pointer; }
 .world-event-summary.active { border-color: #ae8943; box-shadow: inset 0 1px #fff1, 0 0 12px #d6a84a21; animation: eventPulse 2.4s ease-in-out infinite; }
-.world-event-summary b, .world-event-summary span { display: block; }
+.world-event-summary b, .world-event-summary span, .world-event-summary small { display: block; }
 .world-event-summary b { color: #efd17c; font-size: 10px; }
 .world-event-summary span { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.world-event-summary small { margin-top: 5px; color: #bda86f; font-size: 7px; line-height: 1.45; }
 
 .world-event-backdrop { z-index: 20; background: radial-gradient(circle at 50% 40%, #5b492446, #080b08e8 52%); }
 .world-event-modal { width: min(650px, 90vw); padding: 26px; border: 1px solid #b3944f; border-radius: 14px; background: linear-gradient(150deg, #303a28, #151b15 62%, #101510); box-shadow: 0 30px 100px #000f, inset 0 1px #fff2; text-align: center; }
@@ -397,12 +398,14 @@ button.world-event-summary { cursor: pointer; }
 .world-event-modal > small { color: #bbad7d; font-size: 9px; letter-spacing: 1px; }
 .world-event-modal h2 { margin: 8px 0; color: #ffe5a1; font-size: 26px; }
 .world-event-modal > p { max-width: 520px; margin: 0 auto 20px; color: #d1d0ba; font-size: 12px; line-height: 1.75; }
+.world-event-participants { max-width: 540px; margin: -8px auto 16px; padding: 7px 10px; border: 1px solid #6f6845; border-radius: 6px; color: #c8bc8d; background: #0e130da8; font-size: 8px; line-height: 1.55; }
 .world-event-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 14px; }
 .world-event-choices button { min-height: 78px; padding: 10px; border: 1px solid #596149; border-radius: 8px; color: #d9d8c1; background: linear-gradient(145deg, #242e21, #161c15); cursor: pointer; }
 .world-event-choices button:hover { transform: translateY(-2px); border-color: #d2aa53; background: linear-gradient(145deg, #35412e, #20271d); box-shadow: 0 7px 18px #0007; }
 .world-event-choices b, .world-event-choices span { display: block; }
 .world-event-choices b { margin-bottom: 5px; color: #f0cd73; font-size: 12px; }
 .world-event-choices span { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.world-event-choices small { display: block; margin-top: 7px; color: #bda86f; font-size: 7px; line-height: 1.35; }
 
 .codex-modal { width: min(850px, 92vw); height: min(680px, 88vh); display: grid; grid-template-rows: auto auto 1fr; padding: 20px; border: 1px solid #777b50; border-radius: 12px; background: linear-gradient(145deg, #2c3828, #141a14); box-shadow: 0 24px 90px #000e, inset 0 1px #ffffff14; }
 .codex-tabs { display: flex; gap: 6px; margin-bottom: 13px; padding-bottom: 12px; border-bottom: 1px solid #46503a; }
