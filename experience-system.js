@@ -213,6 +213,7 @@ function heroStep(force = false) {
     if (hero.status !== "active") continue;
     if (!person || person.dead || !kingdom || kingdom.defeated) {
       hero.status = "legacy"; hero.fallenYear = Math.floor(year); hero.legacy = hero.victories ? `赢得 ${hero.victories} 场战斗` : "见证了文明的兴衰";
+      recordHeroLegacy(hero, person);
       addEvent(`${hero.title}${hero.name}退出历史舞台，${hero.legacy}。`, "hero"); continue;
     }
     const def = heroArchetypes[hero.archetype]; hero.renown += .12;
@@ -518,7 +519,7 @@ function inspectHero(heroId) {
   selectedHeroId = hero.id; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedLegacyId = null;
   const person = getPerson(hero.personId), kingdom = getKingdom(hero.kingdomId), def = heroArchetypes[hero.archetype], box = document.getElementById("selectionCard");
   box.classList.remove("empty");
-  box.innerHTML = `<h4 style="color:${def.color}">${def.icon} ${hero.title}${hero.name}</h4><div class="detail-row"><span>所属文明</span><b>${kingdom?.name || "失落文明"}</b></div><div class="detail-row"><span>状态 / 等级</span><b>${hero.status === "active" ? "活跃" : `传奇 · 纪元 ${hero.fallenYear || "?"}`} / ${hero.level}</b></div><div class="detail-row"><span>声望 / 胜绩</span><b>${Math.floor(hero.renown)} / ${hero.victories}</b></div><div class="detail-row"><span>现职</span><b>${person ? (professionDefs[person.profession]?.name || unitDefs[person.unitType]?.name || "居民") : "历史人物"}</b></div><p class="muted">${hero.status === "active" ? def.effect : hero.legacy || "事迹被编入世界史"}</p>`;
+  box.innerHTML = `<h4 style="color:${def.color}">${def.icon} ${hero.title}${hero.name}</h4><div class="detail-row"><span>所属文明</span><b>${kingdom?.name || "失落文明"}</b></div><div class="detail-row"><span>状态 / 等级</span><b>${hero.status === "active" ? "活跃" : `传奇 · 纪元 ${hero.fallenYear || "?"}`} / ${hero.level}</b></div><div class="detail-row"><span>声望 / 胜绩</span><b>${Math.floor(hero.renown)} / ${hero.victories}</b></div><div class="detail-row"><span>现职</span><b>${person ? (professionDefs[person.profession]?.name || unitDefs[person.unitType]?.name || "居民") : "历史人物"}</b></div><p class="muted">${hero.status === "active" ? def.effect : hero.legacy || "事迹被编入世界史"}</p>${typeof heroArtifactDetailHtml === "function" ? heroArtifactDetailHtml(hero) : ""}`;
 }
 
 function renderExperiencePanels() {

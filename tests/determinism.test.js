@@ -24,7 +24,7 @@ test("不同种子会生成不同地形和随机序列", () => {
   assert.notEqual(second.randomState.state, first.randomState.state);
 });
 
-test("v19 存档恢复随机状态并续接同一时间线", () => {
+test("v20 存档恢复随机状态并续接同一时间线", () => {
   const { debug } = createWorldRuntime();
   debug.generate("save-resume-seed");
   debug.setRandomDisasters(true);

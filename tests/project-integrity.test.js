@@ -123,6 +123,15 @@ test("动态事件、遗迹神器、奇观、危机与挑战接入模拟、地�
   assert.match(persistence, /normalizeLegacyWorld\(sourceVersion\)/);
 });
 
+test("历史伤痕、神器流转和奇观耐久连接真实历史钩子", () => {
+  assert.equal([...legacy.matchAll(/^\s{2}(war_ruins|flooded_town|impact_crater|ancient_battlefield|plague_memorial|volcano_shrine|broken_road|hero_tomb|abandoned_port|collapsed_mine|dried_well|storm_path):/gm)].length, 12);
+  for (const fn of ["recordHistoricalScar", "actOnLegacySite", "recordDisasterLegacy", "recordConquestLegacy", "recordHeroLegacy", "transferArtifact", "loseArtifact", "damageArtifact", "damageWonder", "restoreWonder"]) assert.match(legacy, new RegExp(`function ${fn}\\(`));
+  assert.match(game, /recordStructureLegacy\(village, structure\)/);
+  assert.match(game, /recordDisasterLegacy\(disaster\)/);
+  assert.match(game, /recordConquestLegacy\(oldKingdomId, newKingdomId, village, realmFallen\)/);
+  assert.match(experience, /recordHeroLegacy\(hero, person\)/);
+});
+
 test("教程、外交记忆、英雄、事件链、音效、地图模式与百科均已接入", () => {
   for (const id of ["tutorialPanel", "worldEventModal", "heroList", "audioBtn", "mapModeSelect", "codexModal"]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(experience, /const tutorialSteps/);

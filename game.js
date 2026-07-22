@@ -80,7 +80,7 @@ function createWorldStats() {
     births: 0, deaths: 0, villagesFounded: 0, villagesCaptured: 0, buildingsConstructed: 0, buildingsDestroyed: 0,
     tradeDeliveries: 0, tradeVolume: 0, warsStarted: 0, warsEnded: 0, disastersTriggered: 0, disastersSurvived: 0, rebellions: 0,
     heroesEmerged: 0, worldEventsResolved: 0, dynamicEventsResolved: 0, ambitionsCompleted: 0, erasReached: 0, successions: 0, successionCrises: 0, marriages: 0, politicalResolutions: 0, politicalCrises: 0,
-    ruinsExplored: 0, artifactsFound: 0, wondersCompleted: 0, crisesStarted: 0, crisesResolved: 0, crisesFailed: 0, challengesCompleted: 0,
+    ruinsExplored: 0, artifactsFound: 0, artifactTransfers: 0, artifactsLost: 0, historicalScars: 0, scarsRestored: 0, wondersCompleted: 0, wondersDamaged: 0, wondersRestored: 0, crisesStarted: 0, crisesResolved: 0, crisesFailed: 0, challengesCompleted: 0,
     peakPopulation: 0, peakVillages: 0, peakKingdoms: 0, peakAnimals: 0
   };
 }
@@ -1492,6 +1492,7 @@ function damageStructure(village, structure, amount, announce = true) {
   village.structures = (village.structures || []).filter(candidate => candidate.id !== structure.id);
   worldStats.buildingsDestroyed++;
   syncBuildingCounts(village); unindexStructure(structure);
+  recordStructureLegacy(village, structure);
   if (announce && def) addEvent(`${village.name}的一座${def.name}被摧毁。`);
   return true;
 }
@@ -1704,7 +1705,7 @@ function simulateDisasters() {
     if (disaster.type === "plague") simulatePlague(disaster);
     if (disaster.type === "drought") simulateDrought(disaster);
   }
-  for (const disaster of activeDisasters) if (disaster.duration <= 0) { worldStats.disastersSurvived++; addEvent(`${disasterDefs[disaster.type].icon} ${disasterDefs[disaster.type].name}逐渐平息。`); }
+  for (const disaster of activeDisasters) if (disaster.duration <= 0) { worldStats.disastersSurvived++; recordDisasterLegacy(disaster); addEvent(`${disasterDefs[disaster.type].icon} ${disasterDefs[disaster.type].name}逐渐平息。`); }
   activeDisasters = activeDisasters.filter(disaster => disaster.duration > 0);
 }
 
@@ -1932,7 +1933,8 @@ function captureVillage(village, newKingdomId) {
     if (resident.role === "civilian" && random() < .7) resident.kingdom = newKingdomId;
   }
   addEvent(`${newKingdom?.name}攻占了${oldKingdom?.name}的${village.name}。`);
-  if (!villages.some(v => v.kingdom === oldKingdomId)) {
+  const realmFallen = !villages.some(v => v.kingdom === oldKingdomId); recordConquestLegacy(oldKingdomId, newKingdomId, village, realmFallen);
+  if (realmFallen) {
     oldKingdom.defeated = true;
     markKingdomDynastyDefeated(oldKingdom); markKingdomPoliticsDefeated(oldKingdom);
     peopleOfKingdom(oldKingdomId).forEach(p => { p.kingdom = newKingdomId; if (p.role === "soldier") demobilizePerson(p); });
@@ -2196,7 +2198,7 @@ function debugSnapshot() {
     development: activeKingdoms.map(kingdom => [kingdom.id, kingdom.development?.era || "kindling", kingdom.development?.ambition || null, kingdom.development?.completedAmbitions?.map(entry => entry.id) || []]),
     dynasties: activeKingdoms.map(kingdom => [kingdom.id, kingdom.dynasty?.name || null, kingdom.dynasty?.rulerId || null, kingdom.dynasty?.heirId || null, kingdom.dynasty?.law || null, kingdom.dynasty?.sequence || 0, Boolean(kingdom.dynasty?.disputed)]), diplomacy, randomState: getRandomState(),
     politics: activeKingdoms.map(kingdom => [kingdom.id, kingdom.politics?.dominantFaction || null, round3(kingdom.politics?.cohesion || 0), round3(kingdom.politics?.authority || 0), kingdom.politics?.activeIssue ? [kingdom.politics.activeIssue.faction, kingdom.politics.activeIssue.domain, kingdom.politics.activeIssue.proposed] : null, Object.entries(kingdom.politics?.factions || {}).map(([id, faction]) => [id, round3(faction.support), round3(faction.influence), round3(faction.radicalization), faction.seats])]),
-    legacy: { sites: legacySites.map(site => [site.id, site.type, site.status, round3(site.progress), site.kingdomId, site.artifactId]), artifacts: artifacts.map(artifact => [artifact.id, artifact.type, artifact.kingdomId, artifact.siteId]), wonders: wonders.map(wonder => [wonder.id, wonder.type, wonder.kingdomId, wonder.status, round3(wonder.progress)]), activeEvent: legacyState.activeEvent ? [legacyState.activeEvent.id, legacyState.activeEvent.kingdomId] : null, activeCrisis: legacyState.activeCrisis ? [legacyState.activeCrisis.id, round3(legacyState.activeCrisis.progress), round3(legacyState.activeCrisis.deadline)] : null, challenge: legacyState.challenge ? [legacyState.challenge.id, round3(legacyState.challenge.progress), round3(legacyState.challenge.deadline)] : null },
+    legacy: { sites: legacySites.map(site => [site.id, site.type, site.status, round3(site.progress), site.kingdomId, site.artifactId, site.origin || "ancient", site.resolution || null, site.createdYear || null]), artifacts: artifacts.map(artifact => [artifact.id, artifact.type, artifactKingdomId(artifact), artifact.siteId, artifact.holderType, artifact.holderId, artifact.status, round3(artifact.durability)]), wonders: wonders.map(wonder => [wonder.id, wonder.type, wonder.kingdomId, wonder.status, round3(wonder.progress), round3(wonder.hp), round3(wonder.maxHp)]), activeEvent: legacyState.activeEvent ? [legacyState.activeEvent.id, legacyState.activeEvent.kingdomId] : null, activeCrisis: legacyState.activeCrisis ? [legacyState.activeCrisis.id, round3(legacyState.activeCrisis.progress), round3(legacyState.activeCrisis.deadline)] : null, challenge: legacyState.challenge ? [legacyState.challenge.id, round3(legacyState.challenge.progress), round3(legacyState.challenge.deadline)] : null },
     heroes: heroes.filter(hero => hero.status === "active").map(hero => [hero.id, hero.kingdomId, hero.level, round3(hero.renown), hero.victories]),
     worldEvents: worldEventState.history.map(entry => [entry.chain, entry.stage, entry.choice, entry.year, entry.participantIds || []]),
     worldEvent: {
@@ -2204,7 +2206,7 @@ function debugSnapshot() {
       pending: worldEventState.pending ? [worldEventState.pending.chain, worldEventState.pending.stage, round3(worldEventState.pending.availableYear), worldEventState.pending.participants.map(participant => [participant.role, participant.kingdomId])] : null,
       consequences: worldEventState.consequences.map(item => [item.id, item.chain, item.choice, round3(item.dueYear), item.participantIds]), completed: Object.entries(worldEventState.completed).sort(([a], [b]) => a.localeCompare(b)), locked: [...worldEventState.locked].sort(), memories: worldEventState.memories.map(memory => [memory.chain, memory.stage, memory.choice, memory.year, memory.participantIds])
     },
-    history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries, marriages: worldStats.marriages || 0, successions: worldStats.successions || 0, successionCrises: worldStats.successionCrises || 0, politicalResolutions: worldStats.politicalResolutions || 0, politicalCrises: worldStats.politicalCrises || 0, dynamicEventsResolved: worldStats.dynamicEventsResolved || 0, artifactsFound: worldStats.artifactsFound || 0, wondersCompleted: worldStats.wondersCompleted || 0, crisesResolved: worldStats.crisesResolved || 0, challengesCompleted: worldStats.challengesCompleted || 0 }
+    history: { births: worldStats.births, deaths: worldStats.deaths, warsStarted: worldStats.warsStarted, warsEnded: worldStats.warsEnded, disastersTriggered: worldStats.disastersTriggered, tradeDeliveries: worldStats.tradeDeliveries, marriages: worldStats.marriages || 0, successions: worldStats.successions || 0, successionCrises: worldStats.successionCrises || 0, politicalResolutions: worldStats.politicalResolutions || 0, politicalCrises: worldStats.politicalCrises || 0, dynamicEventsResolved: worldStats.dynamicEventsResolved || 0, artifactsFound: worldStats.artifactsFound || 0, artifactTransfers: worldStats.artifactTransfers || 0, artifactsLost: worldStats.artifactsLost || 0, historicalScars: worldStats.historicalScars || 0, scarsRestored: worldStats.scarsRestored || 0, wondersCompleted: worldStats.wondersCompleted || 0, wondersDamaged: worldStats.wondersDamaged || 0, wondersRestored: worldStats.wondersRestored || 0, crisesResolved: worldStats.crisesResolved || 0, challengesCompleted: worldStats.challengesCompleted || 0 }
   };
 }
 globalThis.RealmDebug = Object.freeze({
@@ -2230,6 +2232,17 @@ globalThis.RealmDebug = Object.freeze({
   triggerWorldCrisis: type => { triggerWorldCrisis(type); return debugSnapshot(); },
   interveneWorldCrisis: action => { interveneWorldCrisis(action); return debugSnapshot(); },
   beginWonder: kingdomId => { beginWonderProject(getKingdom(Number(kingdomId)), true); return debugSnapshot(); },
+  completeWonder: wonderId => { const wonder = wonders.find(candidate => candidate.id === Number(wonderId)), kingdom = getKingdom(wonder?.kingdomId); if (wonder && kingdom && wonder.status !== "complete") completeWonder(wonder, kingdom); return debugSnapshot(); },
+  damageWonder: (wonderId, amount = 60, cause = "调试冲击") => { damageWonder(wonders.find(candidate => candidate.id === Number(wonderId)), Number(amount) || 0, cause); return debugSnapshot(); },
+  restoreWonder: wonderId => { restoreWonder(Number(wonderId), true); return debugSnapshot(); },
+  scarCatalog: () => Object.fromEntries(Object.entries(scarDefs).map(([id, definition]) => [id, { name: definition.name, icon: definition.icon }])),
+  recordScar: (type, x, y, kingdomId = null, details = {}) => { recordHistoricalScar(type, x, y, kingdomId, details); return debugSnapshot(); },
+  actOnLegacySite: (siteId, action, kingdomId = null) => { actOnLegacySite(Number(siteId), action, kingdomId, false); return debugSnapshot(); },
+  discoverArtifact: (siteId, kingdomId) => { discoverArtifact(legacySites.find(site => site.id === Number(siteId) && !isHistoricalScar(site)), getKingdom(Number(kingdomId))); return debugSnapshot(); },
+  manageArtifact: (artifactId, action) => { manageArtifact(Number(artifactId), action); return debugSnapshot(); },
+  transferArtifact: (artifactId, kingdomId, heroId = null) => { transferArtifact(artifacts.find(artifact => artifact.id === Number(artifactId)), Number(kingdomId), heroId, "调试流转"); return debugSnapshot(); },
+  damageArtifact: (artifactId, amount = 25, cause = "调试冲击") => { damageArtifact(artifacts.find(artifact => artifact.id === Number(artifactId)), Number(amount) || 0, cause); return debugSnapshot(); },
+  loseArtifact: (artifactId, reason = "调试失落") => { const artifact = artifacts.find(candidate => candidate.id === Number(artifactId)), location = artifactLocation(artifact) || { x: MAP_W / 2, y: MAP_H / 2 }; loseArtifact(artifact, location.x, location.y, reason); return debugSnapshot(); },
   startChallenge: id => { legacyState.challenge = null; startWorldChallenge(id); return debugSnapshot(); },
   saveData: buildSaveData,
   restore: save => { restoreWorld(structuredClone(save)); return debugSnapshot(); }

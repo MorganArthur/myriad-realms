@@ -530,12 +530,17 @@ button.world-event-summary { cursor: pointer; }
 .faction-meter .radical { background: #ca5f4e; }
 .event.politics::before { background: #6eafd0; box-shadow: 0 0 8px #6eafd0; }
 
-/* v0.16 dynamic events, ruins, artifacts, wonders and world crises */
+/* v0.18 dynamic events, historical scars, artifacts, wonders and world crises */
 .legacy-list, .crisis-list { display: grid; gap: 6px; }
 .legacy-site { width: 100%; padding: 7px 8px; border: 1px solid #495044; border-left: 3px solid var(--legacy-color); border-radius: 7px; color: #d2cfb6; background: linear-gradient(145deg, #1b211a, #121612); text-align: left; cursor: pointer; }
 .legacy-site:hover, .wonder-project:hover { transform: translateX(2px); filter: brightness(1.12); }
 .legacy-site.hidden { opacity: .72; filter: saturate(.45); }
 .legacy-site.complete, .legacy-site.explored { box-shadow: inset 0 0 12px color-mix(in srgb, var(--legacy-color) 16%, transparent); }
+.legacy-site.scar { background: linear-gradient(145deg, color-mix(in srgb, var(--legacy-color) 10%, #211b18), #141311); }
+.legacy-site.scar.unresolved { border-style: dashed; animation: scarPulse 3.2s ease-in-out infinite; }
+.legacy-site.scar.contested { box-shadow: inset 0 0 13px #bc674b28; }
+.legacy-site.wonder.damaged { border-style: dashed; }
+.legacy-site.wonder.ruined { opacity: .58; filter: grayscale(.45); }
 .legacy-site b, .legacy-site span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legacy-site b { color: color-mix(in srgb, var(--legacy-color) 72%, #fff0ba); font-size: 9px; }
 .legacy-site span { margin-top: 2px; color: var(--muted); font-size: 8px; }
@@ -543,6 +548,10 @@ button.world-event-summary { cursor: pointer; }
 .legacy-site > i em, .wonder-project > i em, .world-crisis > i em, .world-challenge > i em { display: block; height: 100%; background: var(--legacy-color, var(--wonder-color, var(--crisis-color, #c5a65d))); }
 .artifact-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
 .artifact-chip { display: inline-flex; padding: 4px 6px; border: 1px solid color-mix(in srgb, var(--artifact-color) 60%, #4e503f); border-radius: 999px; color: var(--artifact-color); background: color-mix(in srgb, var(--artifact-color) 8%, #171b15); font-size: 8px; }
+.artifact-chip, .legacy-actions button { cursor: pointer; }
+.legacy-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 8px; }
+.legacy-actions button { padding: 6px 4px; border: 1px solid #665c42; border-radius: 5px; color: #d9c997; background: linear-gradient(145deg, #2c281c, #1c1d17); font-size: 8px; }
+.legacy-actions button:hover { border-color: #c8a85d; color: #fff0bf; filter: brightness(1.1); }
 .wonder-project { width: 100%; margin-top: 6px; padding: 7px; border: 1px solid color-mix(in srgb, var(--wonder-color) 60%, #4d5041); border-left: 3px solid var(--wonder-color); border-radius: 7px; color: #d6d1b8; background: #171c16; text-align: left; cursor: pointer; }
 .wonder-project b, .wonder-project span { display: block; }
 .wonder-project b { color: var(--wonder-color); font-size: 9px; }
@@ -571,6 +580,7 @@ button.world-event-summary { cursor: pointer; }
 .event.challenge::before { background: #d4bc62; box-shadow: 0 0 8px #d4bc62; }
 
 @keyframes eventPulse { 0%, 100% { box-shadow: 0 0 0 #d6a84a00; } 50% { box-shadow: 0 0 16px #d6a84a42; } }
+@keyframes scarPulse { 0%, 100% { box-shadow: inset 0 0 0 #d99b5e00; } 50% { box-shadow: inset 0 0 14px #d99b5e22; } }
 @media (max-width: 1280px) {
   .topbar { gap: 10px; }
   .experience-controls { gap: 3px; }
