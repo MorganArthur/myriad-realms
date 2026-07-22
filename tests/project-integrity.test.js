@@ -20,6 +20,10 @@ const legacy = fs.readFileSync(path.join(root, "legacy-system.js"), "utf8");
 const challenges = fs.readFileSync(path.join(root, "world-challenge-system.js"), "utf8");
 const app = [game, ui, persistence, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges].join("\n");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const balanceReport = fs.readFileSync(path.join(root, "docs", "balance-report.md"), "utf8");
+const roadmapAudit = fs.readFileSync(path.join(root, "docs", "roadmap-audit.md"), "utf8");
+const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "validate.yml"), "utf8");
 
 test("运行脚本按依赖顺序加载", () => {
   assert.ok(html.indexOf('src="engine-core.js"') >= 0);
@@ -184,4 +188,11 @@ test("视觉层保留工具分组、地图反馈与低动态适配", () => {
   assert.match(ui, /terrainVisualColors/);
   assert.match(styles, /prefers-reduced-motion:\s*reduce/);
   assert.match(styles, /\.world-wrap::before/);
+});
+
+test("发布文档、自动化门禁与八阶段验收保持同步", () => {
+  assert.equal(packageData.version, "0.20.0");
+  assert.match(balanceReport, /v0\.20\.0/); assert.match(balanceReport, /完整食物网存续率 91\.67%/);
+  for (let stage = 1; stage <= 8; stage++) assert.match(roadmapAudit, new RegExp(`阶段 ${stage}`));
+  assert.match(workflow, /npm run check/); assert.match(workflow, /npm run balance:quick/);
 });

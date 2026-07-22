@@ -23,7 +23,6 @@ function createWorldRuleState() { return { selected: [], runId: null, startedAt:
 function normalizedWorldRuleIds(ids) { const requested = new Set(Array.isArray(ids) ? ids : []); return Object.keys(worldRuleDefs).filter(id => requested.has(id)); }
 function activeWorldRuleIds() { return normalizedWorldRuleIds(worldRuleState.selected); }
 function draftWorldRuleIds() { return normalizedWorldRuleIds(worldRuleDraft); }
-function hasWorldRule(id) { return activeWorldRuleIds().includes(id); }
 function worldRuleDifficulty(ids = activeWorldRuleIds()) { return normalizedWorldRuleIds(ids).reduce((sum, id) => sum + worldRuleDefs[id].points, 0); }
 function worldRuleModifier(key) { return activeWorldRuleIds().reduce((sum, id) => sum + Number(worldRuleDefs[id].modifiers?.[key] || 0), 0); }
 function worldRuleMultiplier(key) { return activeWorldRuleIds().reduce((product, id) => product * Number(worldRuleDefs[id].multipliers?.[key] || 1), 1); }
