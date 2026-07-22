@@ -11,14 +11,16 @@ const ui = fs.readFileSync(path.join(root, "game-ui.js"), "utf8");
 const persistence = fs.readFileSync(path.join(root, "game-persistence.js"), "utf8");
 const config = fs.readFileSync(path.join(root, "world-config.js"), "utf8");
 const experience = fs.readFileSync(path.join(root, "experience-system.js"), "utf8");
-const app = [game, ui, persistence, experience].join("\n");
+const longTerm = fs.readFileSync(path.join(root, "long-term-system.js"), "utf8");
+const app = [game, ui, persistence, experience, longTerm].join("\n");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 
 test("运行脚本按依赖顺序加载", () => {
   assert.ok(html.indexOf('src="engine-core.js"') >= 0);
   assert.ok(html.indexOf('src="world-config.js"') > html.indexOf('src="engine-core.js"'));
   assert.ok(html.indexOf('src="experience-system.js"') > html.indexOf('src="world-config.js"'));
-  assert.ok(html.indexOf('src="game-ui.js"') > html.indexOf('src="experience-system.js"'));
+  assert.ok(html.indexOf('src="long-term-system.js"') > html.indexOf('src="experience-system.js"'));
+  assert.ok(html.indexOf('src="game-ui.js"') > html.indexOf('src="long-term-system.js"'));
   assert.ok(html.indexOf('src="game-persistence.js"') > html.indexOf('src="game-ui.js"'));
   assert.ok(html.indexOf('src="game.js"') > html.indexOf('src="game-persistence.js"'));
 });
@@ -33,8 +35,8 @@ test("代码引用的 DOM id 全部存在且页面 id 唯一", () => {
 
 test("新版档案包含体验历史、世界种子与随机状态", () => {
   const version = Number(persistence.match(/version:\s*(\d+),\s*savedAt/)?.[1]);
-  assert.ok(version >= 14);
-  for (const field of ["chronicle", "worldStats", "worldProgress", "culture", "technology", "heroes", "worldEventState", "worldSeed", "randomState"]) assert.match(app, new RegExp(`\\b${field}\\b`));
+  assert.ok(version >= 15);
+  for (const field of ["chronicle", "worldStats", "worldProgress", "culture", "technology", "development", "heroes", "worldEventState", "worldSeed", "randomState"]) assert.match(app, new RegExp(`\\b${field}\\b`));
 });
 
 test("文化科技与六个核心模拟系统相连", () => {
@@ -59,10 +61,23 @@ test("模拟、视图、存档和静态规则保持独立模块边界", () => {
   assert.match(config, /globalThis\.RealmConfig/);
   assert.match(experience, /function startTutorial\(/);
   assert.match(experience, /function evaluateDiplomaticPair\(/);
+  assert.match(longTerm, /function longTermDevelopmentStep\(/);
 });
 
 test("正式运行时代码不绕过种子随机数", () => {
-  for (const [name, source] of Object.entries({ game, ui, persistence, config, experience })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
+  for (const [name, source] of Object.entries({ game, ui, persistence, config, experience, longTerm })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
+});
+
+test("文明时代与八类长期野心均已接入模拟、界面和存档", () => {
+  assert.equal([...longTerm.matchAll(/^\s{2}[a-z_]+:\s*\{/gm)].length, 8);
+  assert.match(longTerm, /const eraDefs/);
+  assert.match(longTerm, /function eraProgressFor\(/);
+  assert.match(longTerm, /function ambitionProgressFor\(/);
+  assert.match(game, /longTermDevelopmentStep\(\)/);
+  assert.match(game, /developmentResearchMultiplier\(kingdom\)/);
+  assert.match(game, /developmentCombatMultiplier\(realm\)/);
+  assert.match(html, /id="developmentList"/);
+  assert.match(ui, /developmentDetailHtml\(kingdom\)/);
 });
 
 test("教程、外交记忆、英雄、事件链、音效、地图模式与百科均已接入", () => {

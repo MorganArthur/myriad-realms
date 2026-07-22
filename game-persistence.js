@@ -1,6 +1,6 @@
 "use strict";
 
-// 持久化层：v14 存档、旧版本迁移、槽位与导入导出。
+// 持久化层：v15 存档、旧版本迁移、槽位与导入导出。
 
 const saveKey = slot => `realm-save-v3-${slot}`;
 const round3 = value => Math.round((value || 0) * 1000) / 1000;
@@ -9,8 +9,8 @@ function buildSaveData() {
   const worldName = document.getElementById("worldName").textContent;
   let activeKingdomCount = 0; for (const kingdom of kingdoms) if (!kingdom.defeated) activeKingdomCount++;
   return {
-    version: 14, savedAt: new Date().toISOString(),
-    meta: { worldName, seed: worldSeed, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, heroes: heroes.filter(hero => hero.status === "active").length, worldEvents: worldEventState.history.length, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length, technologyLevels: kingdoms.reduce((sum, kingdom) => sum + totalTechnologyLevel(kingdom), 0) },
+    version: 15, savedAt: new Date().toISOString(),
+    meta: { worldName, seed: worldSeed, year: Math.floor(year), population: people.length, animals: animals.length, kingdoms: activeKingdomCount, tradeRoutes: tradeRoutes.length, caravans: caravans.length, armies: armies.length, heroes: heroes.filter(hero => hero.status === "active").length, worldEvents: worldEventState.history.length, season: climate.season, weather: climate.weather, renown: worldProgress.renown, achievements: Object.keys(worldProgress.achievements).length, technologyLevels: kingdoms.reduce((sum, kingdom) => sum + totalTechnologyLevel(kingdom), 0), highestEra: Math.max(0, ...kingdoms.map(kingdom => eraIndexOf(kingdom.development?.era))), completedAmbitions: kingdoms.reduce((sum, kingdom) => sum + (kingdom.development?.completedAmbitions?.length || 0), 0) },
     worldName, worldSeed, year, ticks, tiles: tiles.map(t => [t.type, t.fertility, t.biomass, t.fire || 0, t.owner ?? -1, t.moisture, t.temperature]), climate,
     people, animals, villages, kingdoms, events, chronicle, worldStats, worldProgress, activeDisasters, tradeRoutes, caravans, armies, heroes, worldEventState, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextHeroId, nextDisasterId, nextDisasterYear,
     randomState: getRandomState(),
@@ -44,7 +44,7 @@ function normalizeWorldData(sourceVersion = 1) {
   worldProgress.achievements = worldProgress.achievements && typeof worldProgress.achievements === "object" ? worldProgress.achievements : {};
   worldProgress.completedGoals = worldProgress.completedGoals && typeof worldProgress.completedGoals === "object" ? worldProgress.completedGoals : {};
   worldProgress.renown = Math.max(0, Number(worldProgress.renown) || 0);
-  chronicle = (Array.isArray(chronicle) && chronicle.length ? chronicle : events).filter(entry => entry && entry.text).slice(0, 240).map(entry => ({ year: Math.max(1, Number(entry.year) || 1), text: cleanText(entry.text), kind: ["event", "achievement", "goal", "hero", "world-event"].includes(entry.kind) ? entry.kind : "event" }));
+  chronicle = (Array.isArray(chronicle) && chronicle.length ? chronicle : events).filter(entry => entry && entry.text).slice(0, 240).map(entry => ({ year: Math.max(1, Number(entry.year) || 1), text: cleanText(entry.text), kind: ["event", "achievement", "goal", "hero", "world-event", "era", "ambition"].includes(entry.kind) ? entry.kind : "event" }));
   nextStructureId = Math.max(1, Number(nextStructureId) || 1);
   nextTradeRouteId = Math.max(1, Number(nextTradeRouteId) || 1); nextCaravanId = Math.max(1, Number(nextCaravanId) || 1); nextArmyId = Math.max(1, Number(nextArmyId) || 1);
   const usedStructureIds = new Set();
@@ -58,7 +58,7 @@ function normalizeWorldData(sourceVersion = 1) {
     tile.moisture = clamp(Number.isFinite(Number(tile.moisture)) ? Number(tile.moisture) : tile.type === "forest" ? .7 : tile.type === "grass" ? .52 : .2, 0, 1);
     tile.temperature = clamp(Number.isFinite(Number(tile.temperature)) ? Number(tile.temperature) : latitudeTemperature - (tile.type === "mountain" ? 8 : 0), -35, 55);
   }
-  for (const kingdom of kingdoms) { kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4]; normalizeCultureTechnology(kingdom); }
+  for (const kingdom of kingdoms) { kingdom.race ||= ["human", "elf", "dwarf", "orc"][kingdom.id % 4]; normalizeCultureTechnology(kingdom); normalizeDevelopmentState(kingdom); }
   for (const person of people) {
     person.race ||= getKingdom(person.kingdom)?.race || "human"; person.role ||= "civilian";
     person.profession = person.role === "soldier" ? "soldier" : person.age < 16 ? "child" : professionDefs[person.profession] && person.profession !== "soldier" ? person.profession : "laborer";
@@ -119,7 +119,7 @@ function normalizeWorldData(sourceVersion = 1) {
     kingdom.welfareCoverage = clamp(Number.isFinite(Number(kingdom.welfareCoverage)) ? Number(kingdom.welfareCoverage) : 1, 0, 1); kingdom.lastTaxRevenue = Math.max(0, Number(kingdom.lastTaxRevenue) || 0); kingdom.lastPolicyYear = Number(kingdom.lastPolicyYear) || Math.floor(year); kingdom.lastReformYear = Number(kingdom.lastReformYear) || 0; kingdom.policyLockedUntil = Number(kingdom.policyLockedUntil) || 0; kingdom.rebellionCooldownUntil = Number(kingdom.rebellionCooldownUntil) || 0;
   }
   for (const village of villages) village.name = cleanText(village.name) || "无名聚落";
-  for (const event of events) { event.text = cleanText(event.text); event.kind = ["event", "achievement", "goal", "hero", "world-event"].includes(event.kind) ? event.kind : "event"; }
+  for (const event of events) { event.text = cleanText(event.text); event.kind = ["event", "achievement", "goal", "hero", "world-event", "era", "ambition"].includes(event.kind) ? event.kind : "event"; }
   for (let i = 0; i < kingdoms.length; i++) for (let j = i + 1; j < kingdoms.length; j++) {
     if (!relationBetween(kingdoms[i].id, kingdoms[j].id)) setRelation(kingdoms[i].id, kingdoms[j].id, "peace", randi(-20, 25), true);
     else { normalizeDiplomaticRelation(relationBetween(kingdoms[i].id, kingdoms[j].id)); normalizeDiplomaticRelation(relationBetween(kingdoms[j].id, kingdoms[i].id)); }
@@ -189,6 +189,7 @@ function normalizeWorldData(sourceVersion = 1) {
     for (const kingdom of kingdoms) if (!kingdom.defeated) seedLegacyCultureTechnology(kingdom);
     addEvent("各文明开始整理传统与知识，文化和科技进入可记录的时代。");
   }
+  if (sourceVersion < 15) addEvent("文明开始记录时代演进，并为跨越数百年的伟业立下长期野心。", "era");
   rebuildWorldIndexes();
   worldStats.villagesFounded = Math.max(worldStats.villagesFounded, villages.length);
   worldStats.buildingsConstructed = Math.max(worldStats.buildingsConstructed, structureTotal());
