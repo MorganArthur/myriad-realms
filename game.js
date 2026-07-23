@@ -62,6 +62,8 @@ let randomDisastersEnabled = true, disasterFrequency = "normal", nextDisasterYea
 let debugBatchMode = false;
 let worldIndex = createWorldIndex();
 let performanceMetrics = { frames: 0, steps: 0, fps: 0, ups: 0, simulationMs: 0, renderMs: 0, sampleStarted: performance.now() };
+let audioWorldState = { running: false, weather: "clear", rainfall: .72, population: 0, villages: 0, wars: 0, disasters: [], heroes: 0, crises: 0, activeEvent: false, biomeHealth: .55, waterRatio: .18 };
+let nextAudioWorldRefresh = 0;
 
 const idx = (x, y) => y * MAP_W + x;
 const tileAt = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H ? tiles[idx(x, y)] : null;
@@ -1127,6 +1129,7 @@ function completeCaravan(caravan, route) {
   }
   route.deliveries++; route.delivered += caravan.amount + caravan.returnAmount; route.lastDeliveryYear = Math.floor(year);
   worldStats.tradeDeliveries++; worldStats.tradeVolume += caravan.amount + caravan.returnAmount;
+  playExperienceSound("resource", { x: destination.x, worldWidth: MAP_W, intensity: clamp((caravan.amount + caravan.returnAmount) / 24, .35, .8) });
   if (route.deliveries === 1 || route.deliveries % 5 === 0) addEvent(`商队抵达${destination.name}，交付了${tradeResourceDefs[caravan.resource].name}${Math.floor(caravan.amount)}份。`);
   recalculateVillageMarket(source); recalculateVillageMarket(destination);
 }
@@ -1231,6 +1234,7 @@ function attemptConstruction(village, population) {
     if (!created) continue;
     kingdom.resources.wood -= woodCost; kingdom.resources.stone -= stoneCost;
     addEvent(choice === "road" ? `${kingdom.name}在${village.name}铺设了${created}段道路。` : `${kingdom.name}在${village.name}建成了${def.name}。`);
+    playExperienceSound("construction", { x: village.x, worldWidth: MAP_W, intensity: choice === "wall" || choice === "quarry" ? .8 : .55 });
     village.buildCooldown = randi(15, 28); return;
   }
   village.buildCooldown = randi(5, 10);
@@ -1599,7 +1603,7 @@ function triggerDisaster(type, x, y, randomSource = false) {
   if (type === "plague") seedPlague(disaster);
   const cause = randomSource ? "天灾预警" : "神力降灾";
   addEvent(`${def.icon} ${cause}：${disasterLocation(disaster)}发生${def.name}。`);
-  spawnExperienceEffect("power", disaster.x, disaster.y, def.color); playExperienceSound("disaster");
+  spawnExperienceEffect("power", disaster.x, disaster.y, def.color); playExperienceSound("disaster", { x: disaster.x, worldWidth: MAP_W, intensity: .65 + disaster.intensity * .08 });
   if (!randomSource) showToast(`${def.icon} ${def.name}已经降临`);
   renderDirty = true; updateUI(); return disaster;
 }
@@ -1897,8 +1901,9 @@ function militaryBehavior(person) {
       nearbyEnemy.health -= damage;
       spawnPixelCombatEffect(person.unitType, person.x, person.y, nearbyEnemy.x, nearbyEnemy.y, realm?.color || "#e56f57", performance.now() / 1000);
       if (distance <= enemyUnit.range && unit.range < 2.5) person.health -= rand(1, 6) * enemyUnit.attack / unit.defense;
+      experienceAudio?.playCombat(person.unitType, { x: nearbyEnemy.x, worldWidth: MAP_W, intensity: clamp(damage / 24, .35, 1), blocked: enemyUnit.defense > unit.attack ? 1 : 0 });
       person.attackCooldown = unit.range > 2 ? 7 : unit.speed > 1.2 ? 4 : 5;
-      if (nearbyEnemy.health <= 0) { if (nearbyEnemy.role === "soldier") recordSoldierCasualty(nearbyEnemy); nearbyEnemy.dead = true; recordHeroVictory(person); spawnExperienceEffect("battle", nearbyEnemy.x, nearbyEnemy.y, "#e56f57"); playExperienceSound("battle"); }
+      if (nearbyEnemy.health <= 0) { if (nearbyEnemy.role === "soldier") recordSoldierCasualty(nearbyEnemy); nearbyEnemy.dead = true; recordHeroVictory(person); spawnExperienceEffect("battle", nearbyEnemy.x, nearbyEnemy.y, "#e56f57"); playExperienceSound("casualty", { x: nearbyEnemy.x, worldWidth: MAP_W, intensity: .7 }); }
     } else walkToward(person, nearbyEnemy.x, nearbyEnemy.y);
     return;
   }
@@ -1910,6 +1915,8 @@ function militaryBehavior(person) {
     const siegeDamage = rand(1.8, 4.2) * siegePower * moraleFactor * supplyFactor * leadership * metallurgyBonus / wallResistance;
     target.hp -= siegeDamage; person.attackCooldown = 5;
     spawnPixelCombatEffect(unit.siege ? "siege" : person.unitType, person.x, person.y, target.x, target.y, realm?.color || "#e6a14c", performance.now() / 1000);
+    if (unit.siege) { playExperienceSound("siegeLaunch", { x: person.x, worldWidth: MAP_W, intensity: .85 }); playExperienceSound("siegeImpact", { x: target.x, worldWidth: MAP_W, intensity: clamp(siegeDamage / 4, .45, 1) }); }
+    else experienceAudio?.playCombat(person.unitType, { x: target.x, worldWidth: MAP_W, intensity: .55, blocked: walls });
     if (army) army.siegeProgress += siegeDamage;
     if (walls && random() < .08 * siegePower) damageRandomBuilding(target, 1, rand(3, 7) * siegePower, "wall");
     if (target.hp <= 0) captureVillage(target, person.kingdom);
@@ -2173,6 +2180,20 @@ function updatePerformanceDisplay(now) {
   document.getElementById("performanceStat").textContent = `${performanceMetrics.fps} FPS · ${performanceMetrics.ups} UPS · 模拟 ${performanceMetrics.simulationMs.toFixed(1)}ms · 绘制 ${performanceMetrics.renderMs.toFixed(1)}ms`;
   performanceMetrics.frames = 0; performanceMetrics.steps = 0; performanceMetrics.sampleStarted = now;
 }
+function updateAudioExperience(now) {
+  if (now >= nextAudioWorldRefresh) {
+    const activeKingdoms = kingdoms.filter(kingdom => !kingdom.defeated);
+    const wars = activeKingdoms.reduce((sum, kingdom) => sum + Object.values(kingdom.relations || {}).filter(relation => relation.status === "war").length, 0) / 2;
+    audioWorldState = {
+      running, weather: climate.weather, rainfall: climate.rainfall, population: people.length, villages: villages.length, wars,
+      disasters: activeDisasters.map(disaster => disaster.type), heroes: heroes.filter(hero => hero.status === "active").length,
+      crises: legacyState.activeCrisis ? 1 : 0, activeEvent: Boolean(worldEventState.active || legacyState.activeEvent),
+      biomeHealth: clamp(animals.length / 240, .2, 1), waterRatio: .18
+    };
+    nextAudioWorldRefresh = now + 500;
+  }
+  updateWorldAudio(audioWorldState, now);
+}
 function frame(now) {
   performanceMetrics.frames++;
   const dt = Math.min(100, now - last); last = now;
@@ -2184,6 +2205,7 @@ function frame(now) {
     while (accumulator >= 80 && steps < 2) { simulationStep(); accumulator -= 80; steps++; }
     if (steps === 2) accumulator = Math.min(accumulator, 160);
   }
+  updateAudioExperience(now);
   if (renderDirty) { render(); renderDirty = false; }
   updatePerformanceDisplay(now); requestAnimationFrame(frame);
 }

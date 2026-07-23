@@ -30,7 +30,7 @@
         <button class="speed-btn" data-speed="4">4×</button>
       </div>
       <div class="experience-controls" aria-label="体验工具">
-        <button id="audioBtn" class="icon-btn" title="开启世界音效">🔇</button>
+        <button id="audioBtn" class="icon-btn" title="打开声音控制台" aria-controls="audioPanel" aria-expanded="false">🔇</button>
         <button id="helpBtn" class="icon-btn" title="重开创世指引">?</button>
         <button id="codexBtn" class="icon-btn codex-btn" title="打开世界百科">百科</button>
       </div>
@@ -117,55 +117,71 @@
       </section>
 
       <aside class="inspector panel">
-        <h2>世界纪事</h2>
+        <div class="inspector-heading"><div><h2>世界纪事</h2><p>从概览到历史，按层阅读</p></div><span id="inspectorAlert" class="inspector-alert">世界平静</span></div>
         <div id="selectionCard" class="selection-card empty">
           <div class="selection-icon">◌</div>
           <p>点击地图中的居民、聚落或土地查看详情</p>
         </div>
-        <h3 class="section-title-row"><span>世界目标</span><b id="renownStat">✦ 0</b></h3>
-        <div id="goalList" class="goal-list"></div>
-        <h3>文明成就</h3>
-        <div id="achievementList" class="achievement-list"></div>
-        <h3>时代事件</h3>
-        <div id="worldEventSummary"><p class="muted">世界暂时平静</p></div>
-        <h3>世界遗产</h3>
-        <div id="legacyList" class="legacy-list"><p class="muted">遗迹与奇观尚未进入文明视野</p></div>
-        <h3>危机与挑战</h3>
-        <div id="crisisList" class="crisis-list"><p class="muted">世界暂时平静</p></div>
-        <h3>文明发展</h3>
-        <div id="developmentList" class="development-list"><p class="muted">文明尚未点燃时代火种</p></div>
-        <h3>王朝与人物</h3>
-        <div id="dynastyList" class="dynasty-list"><p class="muted">尚未形成统治家族</p></div>
-        <h3>派系与议会</h3>
-        <div id="politicsList" class="politics-list"><p class="muted">尚未形成内部政治秩序</p></div>
-        <h3>英雄传说</h3>
-        <div id="heroList" class="hero-list"><p class="muted">英雄尚未在历史中崭露头角</p></div>
-        <h3>世界统计</h3>
-        <div id="worldStatsList" class="world-stats-list"></div>
-        <h3>气候环境</h3>
-        <div id="climateList" class="climate-list"><p class="muted">气候正在形成</p></div>
-        <h3>生态概览</h3>
-        <div id="ecologyList" class="ecology-list"></div>
-        <h3>社会概览</h3>
-        <div id="societyList" class="society-list"><p class="muted">尚无社会分工</p></div>
-        <h3>贸易物流</h3>
-        <div id="tradeList" class="trade-list"><p class="muted">尚未建立贸易路线</p></div>
-        <h3>军事态势</h3>
-        <div id="armyList" class="army-list"><p class="muted">尚未组建军团</p></div>
-        <h3>国家治理</h3>
-        <div id="governanceList" class="governance-list"><p class="muted">尚未形成政治秩序</p></div>
-        <h3>文化与科技</h3>
-        <div id="cultureList" class="culture-list"><p class="muted">文明知识尚未萌芽</p></div>
-        <h3>灾害预警</h3>
-        <div id="disasterList" class="disaster-list"><p class="muted disaster-calm">世界暂时平静</p></div>
-        <h3>文明概览</h3>
-        <div id="kingdomList" class="kingdom-list"><p class="muted">世界尚无文明</p></div>
-        <h3>外交态势</h3>
-        <div id="diplomacyList" class="diplomacy-list"><p class="muted">尚未建立国家关系</p></div>
-        <h3>近期事件</h3>
-        <div id="eventLog" class="event-log"></div>
-        <h3 class="section-title-row"><span>完整编年史</span><button id="exportChronicleBtn" class="text-button">导出</button></h3>
-        <div id="chronicleList" class="event-log chronicle-list"></div>
+        <nav id="inspectorTabs" class="inspector-tabs" aria-label="世界信息分类">
+          <button class="active" data-inspector-tab="overview">概览</button>
+          <button data-inspector-tab="civilization">文明</button>
+          <button data-inspector-tab="systems">态势</button>
+          <button data-inspector-tab="history">历史</button>
+        </nav>
+        <div class="inspector-panels">
+          <section class="inspector-tab-panel active" data-inspector-panel="overview">
+            <h3 class="section-title-row"><span>世界目标</span><b id="renownStat">✦ 0</b></h3>
+            <div id="goalList" class="goal-list"></div>
+            <h3>文明成就</h3>
+            <div id="achievementList" class="achievement-list"></div>
+            <h3>气候环境</h3>
+            <div id="climateList" class="climate-list"><p class="muted">气候正在形成</p></div>
+            <h3>生态概览</h3>
+            <div id="ecologyList" class="ecology-list"></div>
+            <h3>社会概览</h3>
+            <div id="societyList" class="society-list"><p class="muted">尚无社会分工</p></div>
+            <h3>世界统计</h3>
+            <div id="worldStatsList" class="world-stats-list"></div>
+          </section>
+          <section class="inspector-tab-panel" data-inspector-panel="civilization" hidden>
+            <h3>文明概览</h3>
+            <div id="kingdomList" class="kingdom-list"><p class="muted">世界尚无文明</p></div>
+            <h3>文明发展</h3>
+            <div id="developmentList" class="development-list"><p class="muted">文明尚未点燃时代火种</p></div>
+            <h3>国家治理</h3>
+            <div id="governanceList" class="governance-list"><p class="muted">尚未形成政治秩序</p></div>
+            <h3>文化与科技</h3>
+            <div id="cultureList" class="culture-list"><p class="muted">文明知识尚未萌芽</p></div>
+            <h3>王朝与人物</h3>
+            <div id="dynastyList" class="dynasty-list"><p class="muted">尚未形成统治家族</p></div>
+            <h3>派系与议会</h3>
+            <div id="politicsList" class="politics-list"><p class="muted">尚未形成内部政治秩序</p></div>
+            <h3>英雄传说</h3>
+            <div id="heroList" class="hero-list"><p class="muted">英雄尚未在历史中崭露头角</p></div>
+            <h3>外交态势</h3>
+            <div id="diplomacyList" class="diplomacy-list"><p class="muted">尚未建立国家关系</p></div>
+          </section>
+          <section class="inspector-tab-panel" data-inspector-panel="systems" hidden>
+            <h3>时代事件</h3>
+            <div id="worldEventSummary"><p class="muted">世界暂时平静</p></div>
+            <h3>危机与挑战</h3>
+            <div id="crisisList" class="crisis-list"><p class="muted">世界暂时平静</p></div>
+            <h3>灾害预警</h3>
+            <div id="disasterList" class="disaster-list"><p class="muted disaster-calm">世界暂时平静</p></div>
+            <h3>军事态势</h3>
+            <div id="armyList" class="army-list"><p class="muted">尚未组建军团</p></div>
+            <h3>贸易物流</h3>
+            <div id="tradeList" class="trade-list"><p class="muted">尚未建立贸易路线</p></div>
+            <h3>世界遗产</h3>
+            <div id="legacyList" class="legacy-list"><p class="muted">遗迹与奇观尚未进入文明视野</p></div>
+          </section>
+          <section class="inspector-tab-panel" data-inspector-panel="history" hidden>
+            <h3>近期事件</h3>
+            <div id="eventLog" class="event-log"></div>
+            <h3 class="section-title-row"><span>完整编年史</span><button id="exportChronicleBtn" class="text-button">导出</button></h3>
+            <div id="chronicleList" class="event-log chronicle-list"></div>
+          </section>
+        </div>
       </aside>
     </section>
 
@@ -177,6 +193,16 @@
       <span>原创沙盒原型 · 世界的一切都在实时演化</span>
     </footer>
   </main>
+
+  <section id="audioPanel" class="audio-panel" aria-label="声音控制台" hidden>
+    <div class="audio-panel-title"><div><b>世界声音</b><small id="audioSceneLabel">等待开启</small></div><button id="closeAudioPanelBtn" aria-label="关闭声音控制台">×</button></div>
+    <label class="audio-master-switch"><span><b>启用声音</b><small>音乐、环境声与事件音效</small></span><input id="audioEnabledToggle" type="checkbox" /></label>
+    <label class="audio-slider"><span>总音量 <output id="masterVolumeValue">70</output></span><input id="masterVolume" type="range" min="0" max="100" value="70" /></label>
+    <label class="audio-slider"><span>背景音乐 <output id="musicVolumeValue">34</output></span><input id="musicVolume" type="range" min="0" max="100" value="34" /></label>
+    <label class="audio-slider"><span>环境声 <output id="ambientVolumeValue">46</output></span><input id="ambientVolume" type="range" min="0" max="100" value="46" /></label>
+    <label class="audio-slider"><span>战斗与界面 <output id="effectsVolumeValue">72</output></span><input id="effectsVolume" type="range" min="0" max="100" value="72" /></label>
+    <p>离开页面时自动静音；所有声音均由浏览器实时合成。</p>
+  </section>
 
   <section id="archiveModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="archiveTitle" hidden>
     <div class="archive-modal">
@@ -214,6 +240,7 @@
   </section>
   <script src="engine-core.js"></script>
   <script src="world-config.js"></script>
+  <script src="audio-system.js"></script>
   <script src="pixel-art-system.js"></script>
   <script src="art-atlas.js"></script>
   <script src="world-event-content.js"></script>

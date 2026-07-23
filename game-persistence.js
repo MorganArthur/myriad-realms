@@ -1,6 +1,6 @@
 "use strict";
 
-// 持久化层：v22 存档、旧版本迁移、槽位与导入导出。
+// 持久化层：v22 存档、旧版本迁移、槽位、声音偏好与导入导出。
 
 const saveKey = slot => `realm-save-v3-${slot}`;
 const round3 = value => Math.round((value || 0) * 1000) / 1000;
@@ -14,7 +14,7 @@ function buildSaveData() {
     worldName, worldSeed, year, ticks, tiles: tiles.map(t => [t.type, t.fertility, t.biomass, t.fire || 0, t.owner ?? -1, t.moisture, t.temperature]), climate,
     people, animals, villages, kingdoms, events, chronicle, worldStats, worldProgress, activeDisasters, tradeRoutes, caravans, armies, heroes, worldEventState, legacySites, artifacts, wonders, legacyState, worldRuleState, nextPersonId, nextAnimalId, nextVillageId, nextStructureId, nextTradeRouteId, nextCaravanId, nextArmyId, nextHeroId, nextLegacySiteId, nextArtifactId, nextWonderId, nextDisasterId, nextDisasterYear,
     randomState: getRandomState(),
-    settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency, worldSeed, mapMode, audioEnabled }
+    settings: { camera, speed, selectedTool, brushSize, randomDisastersEnabled, disasterFrequency, worldSeed, mapMode, audioEnabled, audioSettings: experienceAudio?.getSettings() }
   };
 }
 
@@ -231,7 +231,7 @@ function restoreWorld(save, slot = activeSaveSlot) {
   document.querySelectorAll(".tool").forEach(b => b.classList.toggle("active", b.dataset.tool === selectedTool));
   document.getElementById("brushSize").value = brushSize; document.getElementById("brushValue").textContent = brushSize;
   document.getElementById("randomDisasterToggle").checked = randomDisastersEnabled; document.getElementById("disasterFrequency").value = disasterFrequency;
-  audioEnabled = settings.audioEnabled ?? audioEnabled; setMapMode(settings.mapMode || mapMode); const audioButton = document.getElementById("audioBtn"); if (audioButton) audioButton.textContent = audioEnabled ? "🔊" : "🔇"; renderActiveWorldEvent(); renderLegacyChoiceModal();
+  audioEnabled = settings.audioSettings?.enabled ?? settings.audioEnabled ?? audioEnabled; applyExperienceAudioSettings(settings.audioSettings || { enabled: audioEnabled }, true); setMapMode(settings.mapMode || mapMode); renderActiveWorldEvent(); renderLegacyChoiceModal();
   if (slot !== "auto") activeSaveSlot = Number(slot) || activeSaveSlot;
   updateUI(); render();
 }

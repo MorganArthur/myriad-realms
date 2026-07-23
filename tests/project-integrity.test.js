@@ -10,6 +10,7 @@ const game = fs.readFileSync(path.join(root, "game.js"), "utf8");
 const ui = fs.readFileSync(path.join(root, "game-ui.js"), "utf8");
 const persistence = fs.readFileSync(path.join(root, "game-persistence.js"), "utf8");
 const config = fs.readFileSync(path.join(root, "world-config.js"), "utf8");
+const audio = fs.readFileSync(path.join(root, "audio-system.js"), "utf8");
 const pixelArt = fs.readFileSync(path.join(root, "pixel-art-system.js"), "utf8");
 const artAtlas = fs.readFileSync(path.join(root, "art-atlas.js"), "utf8");
 const worldEvents = fs.readFileSync(path.join(root, "world-event-content.js"), "utf8");
@@ -20,7 +21,7 @@ const dynasty = fs.readFileSync(path.join(root, "dynasty-system.js"), "utf8");
 const politics = fs.readFileSync(path.join(root, "politics-system.js"), "utf8");
 const legacy = fs.readFileSync(path.join(root, "legacy-system.js"), "utf8");
 const challenges = fs.readFileSync(path.join(root, "world-challenge-system.js"), "utf8");
-const app = [game, ui, persistence, pixelArt, artAtlas, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges].join("\n");
+const app = [game, ui, persistence, audio, pixelArt, artAtlas, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges].join("\n");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const balanceReport = fs.readFileSync(path.join(root, "docs", "balance-report.md"), "utf8");
@@ -31,7 +32,8 @@ const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "valida
 test("运行脚本按依赖顺序加载", () => {
   assert.ok(html.indexOf('src="engine-core.js"') >= 0);
   assert.ok(html.indexOf('src="world-config.js"') > html.indexOf('src="engine-core.js"'));
-  assert.ok(html.indexOf('src="pixel-art-system.js"') > html.indexOf('src="world-config.js"'));
+  assert.ok(html.indexOf('src="audio-system.js"') > html.indexOf('src="world-config.js"'));
+  assert.ok(html.indexOf('src="pixel-art-system.js"') > html.indexOf('src="audio-system.js"'));
   assert.ok(html.indexOf('src="art-atlas.js"') > html.indexOf('src="pixel-art-system.js"'));
   assert.ok(html.indexOf('src="world-event-content.js"') > html.indexOf('src="art-atlas.js"'));
   assert.ok(html.indexOf('src="regional-event-content.js"') > html.indexOf('src="world-event-content.js"'));
@@ -80,6 +82,7 @@ test("模拟、视图、存档和静态规则保持独立模块边界", () => {
   assert.match(ui, /function render\(/);
   assert.match(persistence, /function buildSaveData\(/);
   assert.match(config, /globalThis\.RealmConfig/);
+  assert.match(audio, /global\.RealmAudio/);
   assert.match(experience, /function startTutorial\(/);
   assert.match(experience, /function evaluateDiplomaticPair\(/);
   assert.match(longTerm, /function longTermDevelopmentStep\(/);
@@ -89,7 +92,7 @@ test("模拟、视图、存档和静态规则保持独立模块边界", () => {
 });
 
 test("正式运行时代码不绕过种子随机数", () => {
-  for (const [name, source] of Object.entries({ game, ui, persistence, config, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
+  for (const [name, source] of Object.entries({ game, ui, persistence, config, audio, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges })) assert.doesNotMatch(source, /Math\.random\s*\(/, `${name} 仍在直接调用 Math.random`);
 });
 
 test("文明时代与八类长期野心均已接入模拟、界面和存档", () => {
@@ -162,12 +165,20 @@ test("六项组合挑战、分享码和跨世界档案接入生成、模拟与�
 });
 
 test("教程、外交记忆、英雄、事件链、音效、地图模式与百科均已接入", () => {
-  for (const id of ["tutorialPanel", "worldEventModal", "heroList", "audioBtn", "mapModeSelect", "codexModal"]) assert.match(html, new RegExp(`id="${id}"`));
+  for (const id of ["tutorialPanel", "worldEventModal", "heroList", "audioBtn", "audioPanel", "mapModeSelect", "codexModal", "inspectorTabs"]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(experience, /const tutorialSteps/);
   assert.match(experience, /function recordDiplomaticMemory\(/);
   assert.match(experience, /function promoteHero\(/);
   assert.match(experience, /const worldEventChains/);
   assert.match(experience, /function playExperienceSound\(/);
+  assert.match(experience, /function updateWorldAudio\(/);
+  assert.match(experience, /function setInspectorTab\(/);
+  assert.match(audio, /function chooseMusicMode\(/);
+  assert.match(audio, /function ambientProfile\(/);
+  assert.match(audio, /function playCombat\(/);
+  for (const sound of ["melee", "shield", "arrow", "cavalry", "siegeLaunch", "siegeImpact", "casualty"]) assert.match(audio, new RegExp(`\\b${sound}\\b`));
+  assert.match(game, /experienceAudio\?\.playCombat/);
+  assert.match(persistence, /audioSettings/);
   assert.match(experience, /function mapModeTileColor\(/);
   assert.match(experience, /function renderCodex\(/);
 });
@@ -202,8 +213,8 @@ test("视觉层保留工具分组、原创地形动画与低动态适配", () =>
 });
 
 test("发布文档、自动化门禁与八阶段验收保持同步", () => {
-  assert.equal(packageData.version, "0.21.0");
-  assert.match(balanceReport, /v0\.21\.0/); assert.match(balanceReport, /完整食物网存续率 91\.67%/);
+  assert.equal(packageData.version, "0.22.0");
+  assert.match(balanceReport, /v0\.22\.0/); assert.match(balanceReport, /完整食物网存续率 91\.67%/);
   for (let stage = 1; stage <= 8; stage++) assert.match(roadmapAudit, new RegExp(`阶段 ${stage}`));
   for (const item of ["环境地形", "建筑", "四种族角色", "战斗", "天灾", "内容插图"]) assert.match(visualArtAudit, new RegExp(item));
   assert.match(visualArtAudit, /26 个画格/);

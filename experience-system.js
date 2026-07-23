@@ -4,15 +4,14 @@
 
 const experienceEngine = globalThis.WorldEngine;
 const experienceConfig = globalThis.RealmConfig;
+const experienceAudio = globalThis.RealmAudio;
 
 const tutorialSteps = Object.freeze([
-  { title: "欢迎来到万象之境", text: "这里不是一张静止地图。文明、生态、贸易、战争和天灾都会在同一个世界中持续演化。", target: ".brand", action: "开始导览" },
-  { title: "先观察世界", text: "点击地图任意位置，查看地块、居民、聚落或建筑的详细信息。", target: "#worldCanvas", signal: "inspect-map", action: "等待点击地图" },
-  { title: "选择创世工具", text: "选择“播种森林”。左侧工具可以塑造地形、创造生物，也能降下神力与天灾。", target: '[data-tool="forest"]', signal: "select-tool", action: "等待选择工具" },
-  { title: "在地图上施展神力", text: "现在点击地图，把一片合适的陆地变成森林。拖动可以连续塑造。", target: "#worldCanvas", signal: "use-tool", action: "等待使用工具" },
-  { title: "让时间流动", text: "点击播放按钮。1×、2×、4×可以调整模拟速度，暂停时仍然可以观察和编辑世界。", target: "#pauseBtn", signal: "start-time", action: "等待开始模拟" },
-  { title: "阅读世界纪事", text: "右侧会汇总目标、生态、贸易、军事、英雄和外交。点击国家、军团或英雄可以继续深入查看。", target: ".inspector", action: "继续" },
-  { title: "你已掌握创世之力", text: "顶部的“？”可以随时重开教程；“百科”包含全部种族、建筑、生物和系统规则。接下来，让世界书写自己的历史。", target: "#helpBtn", action: "完成教程" }
+  { icon: "✦", phase: "认识世界", title: "欢迎来到万象之境", text: "先记住三个动作：观察世界、施展神力、让时间流动。文明、生态、战争与天灾会自行演化。", target: ".brand", action: "开始" },
+  { icon: "☝", phase: "观察", title: "点击世界，先读懂它", text: "点击地图任意位置。右侧置顶卡片会显示土地、居民、建筑或聚落的详情。", target: "#worldCanvas", signal: "inspect-map", action: "跳过此步" },
+  { icon: "🌲", phase: "创造", title: "创造一片森林", text: "选择左侧“播种森林”，再点击一块陆地。你也可以拖动鼠标连续塑造世界。", target: '[data-tool="forest"]', signal: "use-tool", action: "跳过此步" },
+  { icon: "▶", phase: "演化", title: "让时间开始流动", text: "点击播放按钮启动模拟。需要仔细观察时随时暂停，1×、2×、4×只改变演化速度。", target: "#pauseBtn", signal: "start-time", action: "跳过此步" },
+  { icon: "☷", phase: "阅读", title: "只看此刻需要的信息", text: "右侧分为“概览、文明、态势、历史”四层。通常先看概览；战争、天灾和贸易集中在态势页。", target: "#inspectorTabs", action: "完成导览" }
 ]);
 
 let tutorialState = { active: false, step: 0 };
@@ -21,7 +20,6 @@ let heroes = [], nextHeroId = 1;
 let worldEventState = createWorldEventState(14);
 let mapMode = "natural";
 let experienceParticles = [];
-let experienceAudioContext = null;
 let audioEnabled = false;
 let selectedHeroId = null;
 
@@ -75,7 +73,7 @@ function renderTutorial() {
   if (!tutorialState.active) return;
   const step = tutorialSteps[tutorialState.step], target = tutorialTarget();
   if (target) target.classList.add("tutorial-focus");
-  panel.innerHTML = `<div class="tutorial-progress"><i style="width:${(tutorialState.step + 1) / tutorialSteps.length * 100}%"></i></div><small>创世指引 ${tutorialState.step + 1} / ${tutorialSteps.length}</small><h2>${step.title}</h2><p>${step.text}</p><div class="tutorial-actions"><button data-tutorial-action="skip">跳过</button><button class="primary" data-tutorial-action="next" ${step.signal ? "disabled" : ""}>${step.action}</button></div>`;
+  panel.innerHTML = `<div class="tutorial-progress"><i style="width:${(tutorialState.step + 1) / tutorialSteps.length * 100}%"></i></div><div class="tutorial-step-label"><span>${step.icon}</span><small>${step.phase} · ${tutorialState.step + 1} / ${tutorialSteps.length}</small></div><h2>${step.title}</h2><p>${step.text}</p>${step.signal ? `<div class="tutorial-live-hint"><i></i> 完成操作后会自动前进</div>` : ""}<div class="tutorial-actions"><button data-tutorial-action="dismiss">以后再说</button>${tutorialState.step > 0 ? `<button data-tutorial-action="back">上一步</button>` : ""}<button class="${step.signal ? "secondary" : "primary"}" data-tutorial-action="next">${step.action}</button></div>`;
   if (target?.getBoundingClientRect) {
     const rect = target.getBoundingClientRect(), viewportWidth = document.documentElement?.clientWidth || 1280, viewportHeight = document.documentElement?.clientHeight || 720;
     const width = Math.min(360, viewportWidth - 24), panelHeight = 240;
@@ -103,6 +101,11 @@ function advanceTutorial() {
   if (!tutorialState.active) return;
   if (tutorialState.step >= tutorialSteps.length - 1) { finishTutorial(); return; }
   tutorialState.step++; renderTutorial();
+}
+
+function retreatTutorial() {
+  if (!tutorialState.active || tutorialState.step <= 0) return;
+  tutorialState.step--; renderTutorial();
 }
 
 function tutorialSignal(signal) {
@@ -487,24 +490,65 @@ function renderHeroMarker(context, metrics, person, sx, sy, radius) {
   context.restore();
 }
 
-function playExperienceSound(name) {
-  if (!audioEnabled) return;
-  const AudioCtor = window.AudioContext || window.webkitAudioContext; if (!AudioCtor) return;
-  experienceAudioContext ||= new AudioCtor();
-  if (experienceAudioContext.state === "suspended") experienceAudioContext.resume();
-  const presets = { click: [260, .025, .05], power: [420, .08, .18], disaster: [90, .18, .32], event: [330, .12, .28], hero: [520, .1, .3], battle: [140, .05, .12] };
-  const [frequency, gainValue, duration] = presets[name] || presets.click, now = experienceAudioContext.currentTime;
-  const oscillator = experienceAudioContext.createOscillator(), gain = experienceAudioContext.createGain();
-  oscillator.type = name === "disaster" || name === "battle" ? "sawtooth" : "sine"; oscillator.frequency.setValueAtTime(frequency, now); oscillator.frequency.exponentialRampToValueAtTime(Math.max(55, frequency * .72), now + duration);
-  gain.gain.setValueAtTime(.0001, now); gain.gain.exponentialRampToValueAtTime(gainValue, now + .018); gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
-  oscillator.connect(gain); gain.connect(experienceAudioContext.destination); oscillator.start(now); oscillator.stop(now + duration + .02);
+function playExperienceSound(name, details = {}) {
+  return experienceAudio?.play(name, details) || false;
 }
 
 function toggleExperienceAudio() {
-  audioEnabled = !audioEnabled; localStorage.setItem("realm-audio-enabled", String(audioEnabled));
-  const button = document.getElementById("audioBtn"); if (button) { button.textContent = audioEnabled ? "🔊" : "🔇"; button.title = audioEnabled ? "关闭世界音效" : "开启世界音效"; button.dataset.audioEnabled = String(audioEnabled); }
+  audioEnabled = experienceAudio?.setEnabled(!audioEnabled) ?? !audioEnabled; syncExperienceAudioUI();
   if (typeof showToast === "function") showToast(audioEnabled ? "世界音效已开启" : "世界音效已关闭");
   if (audioEnabled) { try { playExperienceSound("hero"); } catch { showToast("浏览器暂时无法启用音效"); } }
+  return audioEnabled;
+}
+
+function syncExperienceAudioUI() {
+  const audioSettings = experienceAudio?.getSettings() || { enabled: audioEnabled, master: .7, music: .34, ambient: .46, effects: .72 };
+  audioEnabled = audioSettings.enabled;
+  const button = document.getElementById("audioBtn");
+  if (button) { button.textContent = audioEnabled ? "🔊" : "🔇"; button.title = "打开声音控制台"; button.dataset.audioEnabled = String(audioEnabled); }
+  const toggle = document.getElementById("audioEnabledToggle"); if (toggle) toggle.checked = audioEnabled;
+  for (const channel of ["master", "music", "ambient", "effects"]) {
+    const input = document.getElementById(`${channel}Volume`), output = document.getElementById(`${channel}VolumeValue`), value = Math.round((audioSettings[channel] ?? 0) * 100);
+    if (input) input.value = value; if (output) output.textContent = value;
+  }
+}
+
+function applyExperienceAudioSettings(settings, unlock = false) {
+  experienceAudio?.applySettings(settings || {}, { unlock }); syncExperienceAudioUI(); return experienceAudio?.getSettings() || { enabled: audioEnabled };
+}
+
+function setAudioPanelOpen(open) {
+  const panel = document.getElementById("audioPanel"), button = document.getElementById("audioBtn"); if (!panel || !button) return;
+  panel.hidden = !open; button.setAttribute?.("aria-expanded", String(open));
+  if (open) syncExperienceAudioUI();
+}
+
+function updateWorldAudio(worldState, now) {
+  const scene = experienceAudio?.update(worldState, now);
+  const label = document.getElementById("audioSceneLabel");
+  if (label && scene) label.textContent = audioEnabled ? `${scene.music} · ${scene.ambient}` : "声音已关闭";
+  const alert = document.getElementById("inspectorAlert"); if (!alert) return scene;
+  const disasters = worldState.disasters?.length || 0, wars = Number(worldState.wars) || 0, activeEvent = Boolean(worldState.activeEvent);
+  const text = disasters ? `${disasters} 个灾害` : wars ? `${wars} 场战争` : activeEvent ? "事件待抉择" : "世界平静";
+  if (alert.textContent !== text) alert.textContent = text;
+  alert.classList.toggle("danger", disasters > 0 || wars > 0); alert.classList.toggle("attention", !disasters && !wars && activeEvent);
+  return scene;
+}
+
+function setInspectorTab(tab, persist = true) {
+  const valid = ["overview", "civilization", "systems", "history"].includes(tab) ? tab : "overview";
+  document.querySelectorAll?.("[data-inspector-tab]").forEach(button => button.classList.toggle("active", button.dataset.inspectorTab === valid));
+  document.querySelectorAll?.("[data-inspector-panel]").forEach(panel => { const active = panel.dataset.inspectorPanel === valid; panel.classList.toggle("active", active); panel.hidden = !active; });
+  if (persist) localStorage.setItem("realm-inspector-tab", valid);
+  return valid;
+}
+
+function initializeInspectorTabs() {
+  setInspectorTab(localStorage.getItem("realm-inspector-tab") || "overview", false);
+  document.getElementById("inspectorTabs")?.addEventListener("click", event => {
+    const button = event.target.closest?.("[data-inspector-tab]"); if (!button) return;
+    setInspectorTab(button.dataset.inspectorTab); playExperienceSound("click", { intensity: .5 });
+  });
 }
 
 function renderActiveWorldEvent() {
@@ -569,19 +613,22 @@ function renderCodex(tab = "peoples") {
 function initializeExperienceUI() {
   if (experienceUiReady) return; experienceUiReady = true;
   mapMode = mapModeDefs[localStorage.getItem("realm-map-mode")] ? localStorage.getItem("realm-map-mode") : "natural";
-  audioEnabled = localStorage.getItem("realm-audio-enabled") === "true";
+  audioEnabled = experienceAudio?.initialize().enabled || false;
   const mapSelect = document.getElementById("mapModeSelect"); if (mapSelect) { mapSelect.value = mapMode; mapSelect.addEventListener("change", event => setMapMode(event.target.value)); }
   document.getElementById("helpBtn")?.addEventListener("click", () => startTutorial(true));
-  document.getElementById("audioBtn")?.addEventListener("click", toggleExperienceAudio);
+  document.getElementById("audioBtn")?.addEventListener("click", () => setAudioPanelOpen(document.getElementById("audioPanel")?.hidden !== false));
+  document.getElementById("closeAudioPanelBtn")?.addEventListener("click", () => setAudioPanelOpen(false));
+  document.getElementById("audioEnabledToggle")?.addEventListener("change", event => { if (event.target.checked !== audioEnabled) toggleExperienceAudio(); else syncExperienceAudioUI(); });
+  for (const channel of ["master", "music", "ambient", "effects"]) document.getElementById(`${channel}Volume`)?.addEventListener("input", event => { experienceAudio?.setVolume(channel, Number(event.target.value) / 100); syncExperienceAudioUI(); });
   document.getElementById("codexBtn")?.addEventListener("click", () => { document.getElementById("codexModal").hidden = false; renderCodex(); });
   document.getElementById("closeCodexBtn")?.addEventListener("click", () => { document.getElementById("codexModal").hidden = true; });
   document.getElementById("codexModal")?.addEventListener("click", event => { if (event.target.id === "codexModal") event.currentTarget.hidden = true; });
   document.getElementById("codexTabs")?.addEventListener("click", event => { const button = event.target.closest?.("[data-codex-tab]"); if (button) renderCodex(button.dataset.codexTab); });
-  document.getElementById("tutorialPanel")?.addEventListener("click", event => { const action = event.target.closest?.("[data-tutorial-action]")?.dataset.tutorialAction; if (action === "skip") finishTutorial(); if (action === "next") advanceTutorial(); });
+  document.getElementById("tutorialPanel")?.addEventListener("click", event => { const action = event.target.closest?.("[data-tutorial-action]")?.dataset.tutorialAction; if (action === "dismiss") finishTutorial(); if (action === "back") retreatTutorial(); if (action === "next") advanceTutorial(); });
   document.getElementById("worldEventModal")?.addEventListener("click", event => { const choice = event.target.closest?.("[data-world-event-choice]")?.dataset.worldEventChoice; if (choice) resolveWorldEvent(choice); });
   document.getElementById("worldEventSummary")?.addEventListener("click", event => { if (event.target.closest?.("[data-open-world-event]")) renderActiveWorldEvent(); });
   document.getElementById("heroList")?.addEventListener("click", event => { const item = event.target.closest?.("[data-hero]"); if (item) inspectHero(Number(item.dataset.hero)); });
-  const audioButton = document.getElementById("audioBtn"); if (audioButton) { audioButton.textContent = audioEnabled ? "🔊" : "🔇"; audioButton.title = audioEnabled ? "关闭世界音效" : "开启世界音效"; audioButton.dataset.audioEnabled = String(audioEnabled); }
+  initializeInspectorTabs(); syncExperienceAudioUI();
   setMapMode(mapMode);
 }
 
