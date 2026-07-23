@@ -3,7 +3,7 @@
 // 视图层：检查面板、画布绘制与侧栏数据投影。
 // 运行时状态由 game.js 持有；此文件不改变模拟状态。
 
-const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, drawStructure: drawPixelStructure, drawVillageCore: drawPixelVillageCore, prepareCharacterFrame: preparePixelCharacterFrame, drawCharacter: drawPixelCharacter, renderCombatEffects: renderPixelCombatEffects, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
+const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, drawStructure: drawPixelStructure, drawVillageCore: drawPixelVillageCore, prepareCharacterFrame: preparePixelCharacterFrame, drawCharacter: drawPixelCharacter, renderCombatEffects: renderPixelCombatEffects, drawDisaster: drawPixelDisaster, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
 
 function workforceHtml(counts) {
   return Object.entries(professionDefs).filter(([key]) => key !== "child" && (counts[key] || 0) > 0).map(([key, def]) => `<span class="profession-item" style="border-color:${def.color}">${def.icon} ${def.name}<b>${counts[key]}</b></span>`).join("") || `<span class="muted">暂无成年劳动力</span>`;
@@ -245,7 +245,7 @@ function render() {
   renderTradeRoutes(m);
   renderStructures(m, artTime);
   renderLegacyMarkers(ctx, m);
-  renderDisasters(m);
+  renderDisasters(m, artTime);
   for (const animal of animals) {
     const sx = m.ox + (animal.x + .5) * m.size, sy = m.oy + (animal.y + .5) * m.size;
     if (sx < -10 || sy < -10 || sx > m.width + 10 || sy > m.height + 10) continue;
@@ -287,32 +287,10 @@ function render() {
   performanceMetrics.renderMs = performanceMetrics.renderMs ? performanceMetrics.renderMs * .9 + elapsed * .1 : elapsed;
 }
 
-function renderDisasters(m) {
+function renderDisasters(m, artTime) {
   for (const disaster of activeDisasters) {
     const def = disasterDefs[disaster.type]; if (!def) continue;
-    const sx = m.ox + (disaster.x + .5) * m.size, sy = m.oy + (disaster.y + .5) * m.size, radius = disaster.radius * m.size;
-    if (sx + radius < 0 || sy + radius < 0 || sx - radius > m.width || sy - radius > m.height) continue;
-    const pulse = .86 + Math.sin((disaster.age || 0) * .18) * .08;
-    ctx.save(); ctx.globalAlpha = .2; ctx.fillStyle = def.color; ctx.strokeStyle = def.color; ctx.lineWidth = Math.max(1.5, m.size * .35);
-    if (disaster.type === "earthquake") {
-      ctx.globalAlpha = .65; ctx.setLineDash([m.size * .8, m.size * .55]); ctx.beginPath(); ctx.arc(sx, sy, radius * pulse, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]); for (let n = 0; n < 6; n++) { const angle = n * 1.9 + disaster.id, length = radius * (.45 + n * .07); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(angle) * length, sy + Math.sin(angle) * length); ctx.stroke(); }
-    } else if (disaster.type === "flood") {
-      ctx.globalAlpha = .24; ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = .65; for (let n = -2; n <= 2; n++) { ctx.beginPath(); ctx.arc(sx, sy + n * m.size * 1.4, radius * (.7 + n * .03), .15, Math.PI - .15); ctx.stroke(); }
-    } else if (disaster.type === "tornado") {
-      ctx.globalAlpha = .76; ctx.lineWidth = Math.max(2, m.size * .55); ctx.beginPath();
-      for (let n = 0; n < 24; n++) { const angle = n * .6 + disaster.age * .18, spiralRadius = radius * n / 25, x = sx + Math.cos(angle) * spiralRadius, y = sy - radius * .8 + n / 23 * radius * 1.5; if (!n) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
-      ctx.stroke();
-    } else if (disaster.type === "volcano") {
-      ctx.globalAlpha = .7; ctx.fillStyle = "#3f2a25"; ctx.beginPath(); ctx.moveTo(sx, sy - radius * .65); ctx.lineTo(sx + radius * .72, sy + radius * .55); ctx.lineTo(sx - radius * .72, sy + radius * .55); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = def.color; ctx.beginPath(); ctx.arc(sx, sy - radius * .58, Math.max(3, radius * .18 * pulse), 0, Math.PI * 2); ctx.fill();
-    } else {
-      ctx.globalAlpha = disaster.type === "plague" ? .18 : .14; ctx.beginPath(); ctx.arc(sx, sy, radius * pulse, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = .62; ctx.setLineDash([m.size, m.size * .65]); ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-    }
-    if (m.size > 4) { ctx.globalAlpha = .95; ctx.font = `${Math.max(14, m.size * 2.4)}px sans-serif`; ctx.textAlign = "center"; ctx.fillText(def.icon, sx, sy - radius - 4); }
-    ctx.restore();
+    drawPixelDisaster(ctx, { disaster, definition: def, metrics: m, time: artTime });
   }
 }
 

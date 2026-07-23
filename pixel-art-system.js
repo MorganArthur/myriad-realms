@@ -197,6 +197,41 @@
     return combatEffects.length;
   }
 
+  function drawDisaster(context, options) {
+    const { disaster, definition, metrics, time = 0 } = options;
+    if (!disaster || !definition || !metrics) return false;
+    const sx = metrics.ox + (disaster.x + .5) * metrics.size, sy = metrics.oy + (disaster.y + .5) * metrics.size, radius = Math.max(metrics.size, disaster.radius * metrics.size), phase = prefersReducedMotion() ? 0 : time, hash = visualHash(disaster.id || disaster.x, disaster.type?.length || disaster.y), pulse = .88 + Math.sin(phase * 3 + hash % 7) * .06, pixel = Math.max(1, metrics.size * .18);
+    if (sx + radius < 0 || sy + radius < 0 || sx - radius > metrics.width || sy - radius > metrics.height) return false;
+    context.save(); context.strokeStyle = definition.color; context.fillStyle = definition.color; context.lineWidth = Math.max(1.5, metrics.size * .26);
+    if (disaster.type === "earthquake") {
+      context.globalAlpha = .22; for (let ring = 0; ring < 3; ring++) { context.beginPath(); context.arc(sx, sy, radius * (.42 + ring * .24) * pulse, 0, Math.PI * 2); context.stroke(); }
+      context.globalAlpha = .82; context.strokeStyle = "#312821"; for (let branch = 0; branch < 7; branch++) { const angle = branch * .9 + hash % 11, length = radius * (.46 + branch % 3 * .17), midX = sx + Math.cos(angle) * length * .48, midY = sy + Math.sin(angle) * length * .48; context.beginPath(); context.moveTo(sx, sy); context.lineTo(midX + Math.sin(angle) * metrics.size * .4, midY); context.lineTo(sx + Math.cos(angle) * length, sy + Math.sin(angle) * length); context.stroke(); }
+      context.fillStyle = "#d8c4a7"; context.globalAlpha = .5; for (let dust = 0; dust < 8; dust++) { const angle = dust * 2.2 + hash, distance = radius * (.28 + dust % 4 * .16); context.fillRect(sx + Math.cos(angle) * distance, sy + Math.sin(angle) * distance - pixel, pixel * (1 + dust % 2), pixel); }
+    } else if (disaster.type === "flood") {
+      context.globalAlpha = .2; context.beginPath(); context.arc(sx, sy, radius, 0, Math.PI * 2); context.fill(); context.globalAlpha = .76; context.strokeStyle = "#a7e2e6";
+      for (let wave = -3; wave <= 3; wave++) { const offset = ((phase * metrics.size * 1.8 + wave * metrics.size * 2.4) % (radius * 1.5)) - radius * .75; context.beginPath(); context.arc(sx + offset * .12, sy + offset, radius * (.58 + (wave + 3) * .035), .12, Math.PI - .12); context.stroke(); }
+      context.fillStyle = "#725039"; context.globalAlpha = .78; for (let debris = 0; debris < 5; debris++) { const angle = hash % 9 + debris * 2.1, drift = (phase * (6 + debris) + debris * 17) % Math.max(1, radius * 1.3); context.save(); context.translate(sx + Math.cos(angle) * drift, sy + Math.sin(angle) * drift * .55); context.rotate(angle); context.fillRect(-pixel * 1.6, -pixel * .35, pixel * 3.2, pixel * .7); context.restore(); }
+    } else if (disaster.type === "tornado") {
+      context.globalAlpha = .3; context.fillStyle = "#788487"; context.beginPath(); context.ellipse(sx, sy + radius * .52, radius * .55, radius * .18, 0, 0, Math.PI * 2); context.fill();
+      for (let band = 0; band < 3; band++) { context.globalAlpha = .72 - band * .16; context.lineWidth = Math.max(1.5, metrics.size * (.48 - band * .08)); context.beginPath(); for (let point = 0; point < 28; point++) { const ratio = point / 27, angle = point * .67 + phase * (5 - band) + band * 2.2, width = radius * (.12 + ratio * .58), x = sx + Math.cos(angle) * width, y = sy + radius * .52 - ratio * radius * 1.28; if (!point) context.moveTo(x, y); else context.lineTo(x, y); } context.stroke(); }
+      context.fillStyle = "#564b40"; context.globalAlpha = .9; for (let debris = 0; debris < 7; debris++) { const angle = phase * (3 + debris * .2) + debris, distance = radius * (.3 + debris % 3 * .19); context.fillRect(sx + Math.cos(angle) * distance, sy - radius * .2 + Math.sin(angle) * distance, pixel, pixel); }
+    } else if (disaster.type === "volcano") {
+      context.globalAlpha = .88; context.fillStyle = "#3d2b29"; context.beginPath(); context.moveTo(sx, sy - radius * .62); context.lineTo(sx + radius * .74, sy + radius * .58); context.lineTo(sx - radius * .74, sy + radius * .58); context.closePath(); context.fill(); context.fillStyle = "#ef673a";
+      for (let stream = -1; stream <= 1; stream++) { const topX = sx + stream * radius * .12, bend = Math.sin(phase * 2 + stream) * radius * .08; context.beginPath(); context.moveTo(topX, sy - radius * .53); context.lineTo(topX + bend + stream * radius * .16, sy + radius * .12); context.lineTo(topX + stream * radius * .25, sy + radius * .54); context.lineTo(topX + stream * radius * .14, sy + radius * .52); context.lineTo(topX + bend - pixel, sy + radius * .08); context.closePath(); context.fill(); }
+      context.fillStyle = "#17191a"; context.globalAlpha = .58; for (let smoke = 0; smoke < 5; smoke++) { const rise = (phase * metrics.size * 5 + smoke * radius * .22) % (radius * 1.12); context.beginPath(); context.arc(sx + Math.sin(phase + smoke) * radius * .16, sy - radius * .52 - rise, pixel * (1.6 + smoke * .35), 0, Math.PI * 2); context.fill(); }
+      context.fillStyle = "#ffc857"; context.globalAlpha = .94; for (let ember = 0; ember < 7; ember++) { const angle = ember * .86 + hash, height = radius * (.45 + ember % 3 * .22), sway = Math.sin(phase * 4 + ember) * radius * .18; context.fillRect(sx + sway + Math.cos(angle) * radius * .2, sy - height, pixel, pixel); }
+    } else if (disaster.type === "plague") {
+      context.globalAlpha = .14; context.beginPath(); context.arc(sx, sy, radius * pulse, 0, Math.PI * 2); context.fill(); context.strokeStyle = "#b7df72"; context.globalAlpha = .58; context.setLineDash([metrics.size * .75, metrics.size * .58]); context.beginPath(); context.arc(sx, sy, radius, 0, Math.PI * 2); context.stroke(); context.setLineDash([]);
+      for (let spore = 0; spore < 16; spore++) { const angle = spore * 2.37 + phase * (.4 + spore % 3 * .12), distance = radius * (.18 + spore % 5 * .16), size = pixel * (spore % 4 === 0 ? 1.8 : 1); context.globalAlpha = .48 + spore % 3 * .16; context.beginPath(); context.arc(sx + Math.cos(angle) * distance, sy + Math.sin(angle) * distance, size, 0, Math.PI * 2); context.fill(); }
+      context.strokeStyle = "#d6f2a3"; context.globalAlpha = .82; context.beginPath(); context.arc(sx, sy, metrics.size * .75 * pulse, 0, Math.PI * 2); context.stroke(); context.beginPath(); context.moveTo(sx - metrics.size * .48, sy); context.lineTo(sx + metrics.size * .48, sy); context.moveTo(sx, sy - metrics.size * .48); context.lineTo(sx, sy + metrics.size * .48); context.stroke();
+    } else if (disaster.type === "drought") {
+      context.globalAlpha = .13; context.beginPath(); context.arc(sx, sy, radius, 0, Math.PI * 2); context.fill(); context.strokeStyle = "#edc66c"; context.globalAlpha = .46; for (let haze = 0; haze < 4; haze++) { const offset = Math.sin(phase * 2.4 + haze) * metrics.size; context.beginPath(); context.arc(sx + offset, sy, radius * (.38 + haze * .18), 0, Math.PI * 2); context.stroke(); }
+      context.strokeStyle = "#6f4d2e"; context.globalAlpha = .78; for (let crack = 0; crack < 8; crack++) { const angle = crack * .8 + hash % 5, length = radius * (.3 + crack % 4 * .13); context.beginPath(); context.moveTo(sx, sy); context.lineTo(sx + Math.cos(angle) * length * .55, sy + Math.sin(angle) * length * .55); context.lineTo(sx + Math.cos(angle + .12) * length, sy + Math.sin(angle + .12) * length); context.stroke(); }
+      context.fillStyle = "#d8a94c"; context.globalAlpha = .54; for (let dust = 0; dust < 10; dust++) { const angle = phase * .7 + dust * 1.7, distance = radius * (.22 + dust % 5 * .15); context.fillRect(sx + Math.cos(angle) * distance, sy + Math.sin(angle) * distance, pixel, pixel); }
+    }
+    context.restore(); return true;
+  }
+
   function structureVisualState(structure, villageLevel = 1, currentYear = 1) {
     const integrity = Math.max(0, Math.min(1, Number(structure?.hp) / Math.max(1, Number(structure?.maxHp) || 1))), level = Math.max(1, Math.min(3, Math.floor(Number(villageLevel) || 1)));
     return { integrity, level, construction: currentYear > 1 && currentYear - (Number(structure?.builtYear) || currentYear) < .8, damage: integrity < .35 ? "broken" : integrity < .72 ? "worn" : "intact" };
@@ -260,5 +295,5 @@
     drawDamageAndConstruction(context, sx, sy, size, { integrity, level, construction: false, damage: integrity < .35 ? "broken" : integrity < .72 ? "worn" : "intact" }, time, hash); context.restore();
   }
 
-  globalThis.RealmPixelArt = Object.freeze({ terrainPalettes, accents, buildingSilhouettes, raceSpritePalettes, visualHash, prefersReducedMotion, animationFrameDue, terrainColor, drawTerrainTile, drawWeatherOverlay, prepareCharacterFrame, drawCharacter, spawnCombatEffect, renderCombatEffects, structureVisualState, drawStructure, drawVillageCore });
+  globalThis.RealmPixelArt = Object.freeze({ terrainPalettes, accents, buildingSilhouettes, raceSpritePalettes, visualHash, prefersReducedMotion, animationFrameDue, terrainColor, drawTerrainTile, drawWeatherOverlay, prepareCharacterFrame, drawCharacter, spawnCombatEffect, renderCombatEffects, drawDisaster, structureVisualState, drawStructure, drawVillageCore });
 })();

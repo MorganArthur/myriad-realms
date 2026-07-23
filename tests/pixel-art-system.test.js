@@ -16,7 +16,7 @@ function loadPixelArt(reducedMotion = false) {
 function recordingContext() {
   const calls = [];
   const context = { calls };
-  for (const method of ["arc", "beginPath", "closePath", "ellipse", "fill", "fillRect", "lineTo", "moveTo", "restore", "rotate", "save", "stroke", "strokeRect", "translate"]) context[method] = (...args) => calls.push([method, ...args]);
+  for (const method of ["arc", "beginPath", "closePath", "ellipse", "fill", "fillRect", "lineTo", "moveTo", "restore", "rotate", "save", "setLineDash", "stroke", "strokeRect", "translate"]) context[method] = (...args) => calls.push([method, ...args]);
   return context;
 }
 
@@ -80,4 +80,13 @@ test("五类兵种拥有装备轮廓、弹道与命中反馈", () => {
   }
   const effects = recordingContext(), count = art.renderCombatEffects(effects, { ox: 0, oy: 0, size: 10 }, 3.12); assert.equal(count, 5); assert.ok(effects.calls.some(call => call[0] === "stroke"));
   assert.equal(art.renderCombatEffects(recordingContext(), { ox: 0, oy: 0, size: 10 }, 4), 0);
+});
+
+test("六类天灾使用彼此独立的动态像素场景", () => {
+  const art = loadPixelArt(), types = ["earthquake", "flood", "tornado", "volcano", "plague", "drought"], signatures = new Set();
+  for (const [index, type] of types.entries()) {
+    const context = recordingContext(), drawn = art.drawDisaster(context, { disaster: { id: index + 1, type, x: 8, y: 8, radius: type === "tornado" ? 2 : 5 }, definition: { color: "#dd7755" }, metrics: { ox: 0, oy: 0, size: 10, width: 300, height: 300 }, time: 4.2 });
+    assert.equal(drawn, true); assert.ok(context.calls.length >= 12, `${type} 细节不足`); signatures.add(context.calls.map(call => call[0]).join(","));
+  }
+  assert.equal(signatures.size, 6);
 });

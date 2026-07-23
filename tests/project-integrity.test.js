@@ -191,6 +191,7 @@ test("视觉层保留工具分组、原创地形动画与低动态适配", () =>
   assert.match(pixelArt, /const buildingSilhouettes/); assert.match(pixelArt, /function drawStructure\(/); assert.match(pixelArt, /function drawVillageCore\(/);
   assert.match(pixelArt, /const raceSpritePalettes/); assert.match(pixelArt, /function prepareCharacterFrame\(/); assert.match(pixelArt, /function drawCharacter\(/);
   assert.match(pixelArt, /function spawnCombatEffect\(/); assert.match(pixelArt, /function renderCombatEffects\(/); assert.match(game, /spawnPixelCombatEffect\(/);
+  assert.match(pixelArt, /function drawDisaster\(/); assert.match(ui, /drawPixelDisaster\(/);
   assert.match(pixelArt, /prefers-reduced-motion:\s*reduce/); assert.match(game, /pixelArtAnimationFrameDue\(now, artFrameInterval\)/);
   assert.match(styles, /prefers-reduced-motion:\s*reduce/);
   assert.match(styles, /\.world-wrap::before/);
