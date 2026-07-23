@@ -2174,6 +2174,8 @@ function frame(now) {
   performanceMetrics.frames++;
   const dt = Math.min(100, now - last); last = now;
   updateExperienceEffects(dt);
+  const artFrameInterval = performanceMetrics.renderMs > 80 ? 320 : performanceMetrics.renderMs > 35 ? 220 : 125;
+  if (pixelArtAnimationFrameDue(now, artFrameInterval)) renderDirty = true;
   if (running) {
     accumulator += dt * speed; let steps = 0;
     while (accumulator >= 80 && steps < 2) { simulationStep(); accumulator -= 80; steps++; }

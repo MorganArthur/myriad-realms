@@ -10,6 +10,7 @@ const game = fs.readFileSync(path.join(root, "game.js"), "utf8");
 const ui = fs.readFileSync(path.join(root, "game-ui.js"), "utf8");
 const persistence = fs.readFileSync(path.join(root, "game-persistence.js"), "utf8");
 const config = fs.readFileSync(path.join(root, "world-config.js"), "utf8");
+const pixelArt = fs.readFileSync(path.join(root, "pixel-art-system.js"), "utf8");
 const worldEvents = fs.readFileSync(path.join(root, "world-event-content.js"), "utf8");
 const regionalEvents = fs.readFileSync(path.join(root, "regional-event-content.js"), "utf8");
 const experience = fs.readFileSync(path.join(root, "experience-system.js"), "utf8");
@@ -18,7 +19,7 @@ const dynasty = fs.readFileSync(path.join(root, "dynasty-system.js"), "utf8");
 const politics = fs.readFileSync(path.join(root, "politics-system.js"), "utf8");
 const legacy = fs.readFileSync(path.join(root, "legacy-system.js"), "utf8");
 const challenges = fs.readFileSync(path.join(root, "world-challenge-system.js"), "utf8");
-const app = [game, ui, persistence, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges].join("\n");
+const app = [game, ui, persistence, pixelArt, worldEvents, regionalEvents, experience, longTerm, dynasty, politics, legacy, challenges].join("\n");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const balanceReport = fs.readFileSync(path.join(root, "docs", "balance-report.md"), "utf8");
@@ -28,7 +29,8 @@ const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "valida
 test("运行脚本按依赖顺序加载", () => {
   assert.ok(html.indexOf('src="engine-core.js"') >= 0);
   assert.ok(html.indexOf('src="world-config.js"') > html.indexOf('src="engine-core.js"'));
-  assert.ok(html.indexOf('src="world-event-content.js"') > html.indexOf('src="world-config.js"'));
+  assert.ok(html.indexOf('src="pixel-art-system.js"') > html.indexOf('src="world-config.js"'));
+  assert.ok(html.indexOf('src="world-event-content.js"') > html.indexOf('src="pixel-art-system.js"'));
   assert.ok(html.indexOf('src="regional-event-content.js"') > html.indexOf('src="world-event-content.js"'));
   assert.ok(html.indexOf('src="experience-system.js"') > html.indexOf('src="regional-event-content.js"'));
   assert.ok(html.indexOf('src="long-term-system.js"') > html.indexOf('src="experience-system.js"'));
@@ -181,11 +183,12 @@ test("三十条区域事件按世界条件选择目标并共用数据化效果�
   assert.match(legacy, /applyWorldEventEffects\(choice\.effects/);
 });
 
-test("视觉层保留工具分组、地图反馈与低动态适配", () => {
+test("视觉层保留工具分组、原创地形动画与低动态适配", () => {
   const styles = fs.readFileSync(path.join(root, "styles.css"), "utf8");
   assert.equal([...html.matchAll(/class="tool-category/g)].length, 4);
   assert.match(ui, /function renderMapCursor\(/);
-  assert.match(ui, /terrainVisualColors/);
+  assert.match(pixelArt, /const terrainPalettes/); assert.match(pixelArt, /function drawTerrainTile\(/); assert.match(pixelArt, /function drawWeatherOverlay\(/);
+  assert.match(pixelArt, /prefers-reduced-motion:\s*reduce/); assert.match(game, /pixelArtAnimationFrameDue\(now, artFrameInterval\)/);
   assert.match(styles, /prefers-reduced-motion:\s*reduce/);
   assert.match(styles, /\.world-wrap::before/);
 });

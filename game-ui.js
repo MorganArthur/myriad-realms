@@ -3,6 +3,8 @@
 // 视图层：检查面板、画布绘制与侧栏数据投影。
 // 运行时状态由 game.js 持有；此文件不改变模拟状态。
 
+const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
+
 function workforceHtml(counts) {
   return Object.entries(professionDefs).filter(([key]) => key !== "child" && (counts[key] || 0) > 0).map(([key, def]) => `<span class="profession-item" style="border-color:${def.color}">${def.icon} ${def.name}<b>${counts[key]}</b></span>`).join("") || `<span class="muted">暂无成年劳动力</span>`;
 }
@@ -133,13 +135,6 @@ function inspectArmy(armyId) {
   box.innerHTML = `<h4><span style="color:${kingdom?.color}">⚑</span> ${army.name}</h4><div class="detail-row"><span>将领</span><b>${general ? `★ #${general.id} · 统率 ${general.leadership.toFixed(2)}` : "等待任命"}</b></div><div class="detail-row"><span>状态 / 兵力</span><b>${statusLabels[army.status] || army.status} · ${members.length}</b></div><div class="detail-row"><span>集结地</span><b>${rally?.name || "野外"}</b></div><div class="detail-row"><span>战役目标</span><b>${target?.name || "暂无"}</b></div><div class="detail-row"><span>伤亡 / 攻城进度</span><b>${army.casualties || 0} / ${Math.floor(army.siegeProgress || 0)}</b></div><p class="muted unit-line">${unitLine}</p><div class="need-list">${needMeter("军团士气", army.morale)}${needMeter("军团补给", army.supply / Math.max(1, army.maxSupply) * 100)}</div>`;
 }
 
-const terrainVisualColors = Object.freeze({
-  deep: ["#173c58", "#193f5b", "#153951", "#1a425d"], water: ["#23617a", "#28677e", "#205b73", "#2a6a80"],
-  sand: ["#c6ad69", "#cbb471", "#bea462", "#d0b976"], grass: ["#679344", "#6d9949", "#608b40", "#719d4c"],
-  forest: ["#315d32", "#356436", "#2c572e", "#39683a"], mountain: ["#777966", "#7d7f6b", "#6f7260", "#858673"],
-  ash: ["#3d3a34", "#454139", "#37342f", "#49443b"]
-});
-
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
   canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr);
@@ -259,14 +254,13 @@ function renderMapCursor(m) {
 }
 
 function render() {
-  const renderStarted = performance.now(), m = viewMetrics(); ctx.clearRect(0, 0, m.width, m.height); ctx.fillStyle = "#0f2534"; ctx.fillRect(0, 0, m.width, m.height);
+  const renderStarted = performance.now(), artTime = renderStarted / 1000, m = viewMetrics(); ctx.clearRect(0, 0, m.width, m.height); ctx.fillStyle = "#0f2534"; ctx.fillRect(0, 0, m.width, m.height);
   const seasonalTint = seasonDefs[climate.season]?.tint || null, mapModeContext = mapMode === "natural" ? null : buildMapModeContext();
   const minX = clamp(Math.floor(-m.ox / m.size), 0, MAP_W), maxX = clamp(Math.ceil((m.width - m.ox) / m.size), 0, MAP_W);
   const minY = clamp(Math.floor(-m.oy / m.size), 0, MAP_H), maxY = clamp(Math.ceil((m.height - m.oy) / m.size), 0, MAP_H);
   for (let y = minY; y < maxY; y++) for (let x = minX; x < maxX; x++) {
     const t = tileAt(x, y), sx = Math.floor(m.ox + x * m.size), sy = Math.floor(m.oy + y * m.size);
-    const visualHash = (x * 37 + y * 61 + x * y * 3) % 19;
-    const palette = terrainVisualColors[t.type]; ctx.fillStyle = t.fire ? terrainColors.fire : palette?.[visualHash % palette.length] || terrainColors[t.type]; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5));
+    drawPixelTerrainTile(ctx, { tile: t, x, y, sx, sy, size: m.size, time: artTime, coastTop: isLand(t) && !isLand(tileAt(x, y - 1)), coastLeft: isLand(t) && !isLand(tileAt(x - 1, y)) });
     if (seasonalTint && isLand(t) && !t.fire) { ctx.fillStyle = seasonalTint; ctx.fillRect(sx, sy, Math.ceil(m.size + .5), Math.ceil(m.size + .5)); }
     if (mapMode === "natural" && t.owner >= 0 && isLand(t)) { ctx.fillStyle = `${getKingdom(t.owner)?.color || "#fff"}35`; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
     if (mapModeContext) { const modeColor = mapModeTileColor(t, mapModeContext); if (modeColor) { ctx.fillStyle = modeColor; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); } }
@@ -276,14 +270,6 @@ function render() {
       if (tileAt(x, y + 1)?.owner !== t.owner) { ctx.beginPath(); ctx.moveTo(sx, sy + m.size); ctx.lineTo(sx + m.size, sy + m.size); ctx.stroke(); }
     }
     if (isLand(t) && (t.biomass || 0) < .18) { ctx.fillStyle = "#6d593724"; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
-    if (isLand(t) && m.size > 3) {
-      const coastWidth = Math.max(1, m.size * .1); ctx.fillStyle = "#ecd48b70";
-      if (!isLand(tileAt(x, y - 1))) ctx.fillRect(sx, sy, m.size, coastWidth);
-      if (!isLand(tileAt(x - 1, y))) ctx.fillRect(sx, sy, coastWidth, m.size);
-    }
-    if (m.size > 5 && ["deep", "water"].includes(t.type) && visualHash % 7 === 0) { ctx.fillStyle = t.type === "deep" ? "#6ca6bc28" : "#a4d8dc38"; ctx.fillRect(sx + m.size * .18, sy + m.size * .38, m.size * .62, Math.max(1, m.size * .1)); }
-    if (m.size > 5 && t.type === "mountain") { ctx.fillStyle = "#a8aa9658"; ctx.beginPath(); ctx.moveTo(sx + m.size * .18, sy + m.size * .82); ctx.lineTo(sx + m.size * .55, sy + m.size * .18); ctx.lineTo(sx + m.size * .86, sy + m.size * .82); ctx.closePath(); ctx.fill(); }
-    if (m.size > 7 && t.type === "forest" && (x * 7 + y * 11) % 4 === 0 && t.biomass > .25) { ctx.fillStyle = "#234825"; ctx.fillRect(sx + m.size * .35, sy + m.size * .15, Math.max(1,m.size*.35), Math.max(1,m.size*.55 * t.biomass)); }
   }
   renderTradeRoutes(m);
   renderStructures(m);
@@ -330,6 +316,7 @@ function render() {
     renderDynastyMarker(ctx, m, p, sx, sy, r);
   }
   renderExperienceEffects(ctx, m);
+  drawPixelWeatherOverlay(ctx, m, climate, artTime);
   renderMapCursor(m);
   const elapsed = performance.now() - renderStarted;
   performanceMetrics.renderMs = performanceMetrics.renderMs ? performanceMetrics.renderMs * .9 + elapsed * .1 : elapsed;
