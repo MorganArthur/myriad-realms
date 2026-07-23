@@ -70,3 +70,14 @@ test("角色动作状态会识别移动方向、步伐与职业工作节奏", ()
   person.x = 4; const moving = art.prepareCharacterFrame([person], 1.1).get(77); assert.equal(moving.moving, true); assert.equal(moving.direction, "east");
   const working = art.prepareCharacterFrame([person], 2).get(77); assert.equal(working.moving, false); assert.equal(working.working, true);
 });
+
+test("五类兵种拥有装备轮廓、弹道与命中反馈", () => {
+  const art = loadPixelArt();
+  for (const [index, unitType] of ["militia", "infantry", "archer", "cavalry", "siege"].entries()) {
+    const context = recordingContext(); art.drawCharacter(context, { person: { id: index + 90, race: "human", role: "soldier", profession: "soldier", unitType, age: 28, attackCooldown: 4 }, sx: 20, sy: 20, size: 12, time: 3, motion: { direction: "east", moving: unitType === "cavalry", walkPhase: 1 } });
+    assert.ok(context.calls.some(call => ["stroke", "fill"].includes(call[0])), `${unitType} 没有绘制装备`);
+    art.spawnCombatEffect(unitType, 1, 2, 4, 5, "#dd7755", 3);
+  }
+  const effects = recordingContext(), count = art.renderCombatEffects(effects, { ox: 0, oy: 0, size: 10 }, 3.12); assert.equal(count, 5); assert.ok(effects.calls.some(call => call[0] === "stroke"));
+  assert.equal(art.renderCombatEffects(recordingContext(), { ox: 0, oy: 0, size: 10 }, 4), 0);
+});

@@ -24,6 +24,7 @@
   const reducedMotionQuery = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)") || null;
   let lastAnimationFrame = -Infinity;
   const characterMotion = new Map();
+  let combatEffects = [];
   let characterFrameCounter = 0;
 
   function visualHash(x, y, salt = 0) {
@@ -137,11 +138,29 @@
     }
   }
 
+  function drawSoldierEquipment(context, person, sx, sy, unit, direction, time, motion, color) {
+    const type = person?.unitType || "militia", side = direction === "west" ? -1 : 1, attack = Number(person?.attackCooldown) > 2 && !prefersReducedMotion() ? Math.sin(time * 13) * unit * .24 : 0;
+    context.strokeStyle = color || "#d9c7a3"; context.fillStyle = color || "#d9c7a3"; context.lineWidth = Math.max(1, unit * .24);
+    context.fillRect(sx - unit * .56, sy - unit * 1.27, unit * 1.12, unit * .22);
+    if (type === "infantry") {
+      context.fillStyle = color || "#6f91ad"; context.beginPath(); context.arc(sx - side * unit * .72, sy + unit * .08, unit * .52, 0, Math.PI * 2); context.fill(); context.strokeStyle = "#e7dcc4"; context.stroke();
+      context.beginPath(); context.moveTo(sx + side * unit * .52, sy - unit * .45); context.lineTo(sx + side * (unit * 1.18 + attack), sy + unit * .62); context.stroke();
+    } else if (type === "archer") {
+      context.beginPath(); context.arc(sx + side * unit * .72, sy + unit * .02, unit * .64, -Math.PI * .48, Math.PI * .48); context.stroke(); context.beginPath(); context.moveTo(sx + side * unit * .7, sy - unit * .62); context.lineTo(sx + side * (unit * .7 + attack), sy + unit * .66); context.stroke();
+    } else if (type === "siege") {
+      context.fillStyle = "#6b472d"; context.fillRect(sx + side * unit * .64, sy + unit * .3, side * unit * 1.15, unit * .42); context.beginPath(); context.arc(sx + side * unit * 1.02, sy + unit * .82, unit * .28, 0, Math.PI * 2); context.arc(sx + side * unit * 1.58, sy + unit * .82, unit * .28, 0, Math.PI * 2); context.fill(); context.strokeStyle = color || "#b66d55"; context.beginPath(); context.moveTo(sx + side * unit * .86, sy + unit * .26); context.lineTo(sx + side * (unit * 1.64 + attack), sy - unit * .56); context.stroke();
+    } else {
+      context.beginPath(); context.moveTo(sx + side * unit * .52, sy - unit * .7); context.lineTo(sx + side * (unit * 1.35 + attack), sy + unit * .82); context.stroke(); context.fillStyle = "#d8d4c8"; context.beginPath(); context.moveTo(sx + side * unit * .38, sy - unit * .9); context.lineTo(sx + side * unit * .7, sy - unit * .63); context.lineTo(sx + side * unit * .48, sy - unit * .45); context.closePath(); context.fill();
+    }
+    if (type === "cavalry") { context.fillStyle = color || "#d39a55"; context.fillRect(sx - side * unit * .9, sy + unit * .24, unit * 1.25, unit * .25); }
+  }
+
   function drawCharacter(context, options) {
     const { person, kingdomColor = "#c99a61", professionColor = "#d9c07c", sx, sy, size: tileSize, time = 0, motion = {} } = options, race = raceSpritePalettes[person?.race] || raceSpritePalettes.human, hash = visualHash(person?.id || 0, person?.race?.length || 0), childScale = person?.profession === "child" || Number(person?.age) < 14 ? .72 : 1;
-    const unit = Math.max(1.15, Math.min(3.7, tileSize * .23)) * childScale, direction = motion.direction || "south", walk = motion.moving && !prefersReducedMotion() ? (motion.walkPhase % 2 ? 1 : -1) : 0, bob = prefersReducedMotion() ? 0 : motion.moving ? Math.abs(Math.sin(time * 9 + hash % 5)) * unit * .22 : Math.sin(time * 2 + hash % 7) * unit * .06, centerY = sy - bob, hair = race.hair[hash % race.hair.length], side = direction === "west" ? -1 : 1;
+    const unit = Math.max(1.15, Math.min(3.7, tileSize * .23)) * childScale, direction = motion.direction || "south", walk = motion.moving && !prefersReducedMotion() ? (motion.walkPhase % 2 ? 1 : -1) : 0, bob = prefersReducedMotion() ? 0 : motion.moving ? Math.abs(Math.sin(time * 9 + hash % 5)) * unit * .22 : Math.sin(time * 2 + hash % 7) * unit * .06, mounted = person?.role === "soldier" && person?.unitType === "cavalry", centerY = sy - bob - (mounted ? unit * .42 : 0), hair = race.hair[hash % race.hair.length], side = direction === "west" ? -1 : 1;
     context.save(); context.fillStyle = "#07100ca0"; context.globalAlpha = .5; context.beginPath(); context.ellipse(sx, sy + unit * 1.16, unit * .9, unit * .34, 0, 0, Math.PI * 2); context.fill(); context.globalAlpha = person?.blessed ? 1 : .96;
-    context.fillStyle = race.shadow; context.fillRect(sx - unit * .56 + walk * unit * .18, centerY + unit * .55, unit * .42, unit * .8); context.fillRect(sx + unit * .14 - walk * unit * .18, centerY + unit * .55, unit * .42, unit * .8);
+    if (mounted) { context.fillStyle = "#765038"; context.beginPath(); context.ellipse(sx, centerY + unit * .95, unit * 1.18, unit * .62, 0, 0, Math.PI * 2); context.fill(); context.fillRect(sx - unit * .82 + walk * unit * .12, centerY + unit * 1.12, unit * .28, unit * .85); context.fillRect(sx + unit * .55 - walk * unit * .12, centerY + unit * 1.12, unit * .28, unit * .85); context.fillRect(sx + side * unit * .78, centerY + unit * .38, unit * .58, unit * .58); }
+    else { context.fillStyle = race.shadow; context.fillRect(sx - unit * .56 + walk * unit * .18, centerY + unit * .55, unit * .42, unit * .8); context.fillRect(sx + unit * .14 - walk * unit * .18, centerY + unit * .55, unit * .42, unit * .8); }
     if (person?.race === "dwarf") {
       context.fillStyle = kingdomColor; context.fillRect(sx - unit * .88, centerY - unit * .25, unit * 1.76, unit * 1.25); context.fillStyle = race.skin; context.fillRect(sx - unit * .55, centerY - unit * 1.02, unit * 1.1, unit * .9); context.fillStyle = hair; context.beginPath(); context.moveTo(sx - unit * .5, centerY - unit * .25); context.lineTo(sx, centerY + unit * .72); context.lineTo(sx + unit * .5, centerY - unit * .25); context.closePath(); context.fill();
     } else if (person?.race === "orc") {
@@ -151,8 +170,31 @@
       if (person?.race === "elf") { context.fillStyle = race.skin; context.beginPath(); context.moveTo(sx - unit * .52, centerY - unit * .98); context.lineTo(sx - unit * 1.04, centerY - unit * .72); context.lineTo(sx - unit * .5, centerY - unit * .55); context.closePath(); context.fill(); context.beginPath(); context.moveTo(sx + unit * .52, centerY - unit * .98); context.lineTo(sx + unit * 1.04, centerY - unit * .72); context.lineTo(sx + unit * .5, centerY - unit * .55); context.closePath(); context.fill(); }
     }
     if (tileSize > 6) { context.fillStyle = "#171b18"; const eyeY = centerY - unit * .78; context.fillRect(sx + side * unit * .22, eyeY, Math.max(1, unit * .16), Math.max(1, unit * .16)); }
-    if (tileSize > 5.5 && person?.role !== "soldier" && person?.profession !== "child") drawProfessionTool(context, person?.profession, sx, centerY, unit, direction, motion.working ? motion.workPhase || 0 : 1, professionColor);
+    if (tileSize > 5.5 && person?.role === "soldier") drawSoldierEquipment(context, person, sx, centerY, unit, direction, time, motion, professionColor);
+    else if (tileSize > 5.5 && person?.profession !== "child") drawProfessionTool(context, person?.profession, sx, centerY, unit, direction, motion.working ? motion.workPhase || 0 : 1, professionColor);
     context.restore(); return { radius: unit * 1.05, unit, centerY };
+  }
+
+  function spawnCombatEffect(type, fromX, fromY, toX, toY, color = "#e56f57", time = 0) {
+    const effect = { type: ["archer", "siege", "cavalry", "infantry", "militia"].includes(type) ? type : "militia", fromX: Number(fromX) || 0, fromY: Number(fromY) || 0, toX: Number(toX) || 0, toY: Number(toY) || 0, color, born: Number(time) || 0, duration: type === "siege" ? .72 : type === "archer" ? .42 : .28, seed: visualHash(Math.floor(fromX * 17), Math.floor(toY * 19), combatEffects.length) };
+    combatEffects.push(effect); if (combatEffects.length > 120) combatEffects = combatEffects.slice(-120); return effect;
+  }
+
+  function renderCombatEffects(context, metrics, time = 0) {
+    combatEffects = combatEffects.filter(effect => time - effect.born <= effect.duration);
+    for (const effect of combatEffects) {
+      const progress = Math.max(0, Math.min(1, (time - effect.born) / effect.duration)), fromX = metrics.ox + (effect.fromX + .5) * metrics.size, fromY = metrics.oy + (effect.fromY + .5) * metrics.size, toX = metrics.ox + (effect.toX + .5) * metrics.size, toY = metrics.oy + (effect.toY + .5) * metrics.size, x = fromX + (toX - fromX) * progress, arc = effect.type === "siege" ? Math.sin(progress * Math.PI) * metrics.size * 1.8 : 0, y = fromY + (toY - fromY) * progress - arc, unit = Math.max(1, metrics.size * .18);
+      context.save(); context.globalAlpha = Math.max(0, 1 - progress * .72); context.strokeStyle = effect.color; context.fillStyle = effect.color; context.lineWidth = Math.max(1, metrics.size * .13);
+      if (["archer", "siege"].includes(effect.type)) {
+        if (effect.type === "siege") { context.fillStyle = "#51453c"; context.beginPath(); context.arc(x, y, unit * 1.35, 0, Math.PI * 2); context.fill(); }
+        else { const angle = Math.atan2(toY - fromY, toX - fromX), dx = Math.cos(angle) * unit * 2.4, dy = Math.sin(angle) * unit * 2.4; context.beginPath(); context.moveTo(x - dx, y - dy); context.lineTo(x + dx, y + dy); context.stroke(); context.beginPath(); context.moveTo(x + dx, y + dy); context.lineTo(x + dx - Math.cos(angle - .65) * unit, y + dy - Math.sin(angle - .65) * unit); context.lineTo(x + dx - Math.cos(angle + .65) * unit, y + dy - Math.sin(angle + .65) * unit); context.closePath(); context.fill(); }
+      } else {
+        const angle = Math.atan2(toY - fromY, toX - fromX), sweep = progress * Math.PI * 1.1; context.beginPath(); context.arc(toX, toY, metrics.size * (.36 + progress * .46), angle - .8 + sweep, angle + .35 + sweep); context.stroke();
+      }
+      if (progress > .62) for (let spark = 0; spark < 4; spark++) { const angle = spark * Math.PI / 2 + effect.seed % 7; context.fillRect(toX + Math.cos(angle) * unit * progress * 3, toY + Math.sin(angle) * unit * progress * 3, unit, unit); }
+      context.restore();
+    }
+    return combatEffects.length;
   }
 
   function structureVisualState(structure, villageLevel = 1, currentYear = 1) {
@@ -218,5 +260,5 @@
     drawDamageAndConstruction(context, sx, sy, size, { integrity, level, construction: false, damage: integrity < .35 ? "broken" : integrity < .72 ? "worn" : "intact" }, time, hash); context.restore();
   }
 
-  globalThis.RealmPixelArt = Object.freeze({ terrainPalettes, accents, buildingSilhouettes, raceSpritePalettes, visualHash, prefersReducedMotion, animationFrameDue, terrainColor, drawTerrainTile, drawWeatherOverlay, prepareCharacterFrame, drawCharacter, structureVisualState, drawStructure, drawVillageCore });
+  globalThis.RealmPixelArt = Object.freeze({ terrainPalettes, accents, buildingSilhouettes, raceSpritePalettes, visualHash, prefersReducedMotion, animationFrameDue, terrainColor, drawTerrainTile, drawWeatherOverlay, prepareCharacterFrame, drawCharacter, spawnCombatEffect, renderCombatEffects, structureVisualState, drawStructure, drawVillageCore });
 })();

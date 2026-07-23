@@ -3,7 +3,7 @@
 // 视图层：检查面板、画布绘制与侧栏数据投影。
 // 运行时状态由 game.js 持有；此文件不改变模拟状态。
 
-const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, drawStructure: drawPixelStructure, drawVillageCore: drawPixelVillageCore, prepareCharacterFrame: preparePixelCharacterFrame, drawCharacter: drawPixelCharacter, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
+const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, drawStructure: drawPixelStructure, drawVillageCore: drawPixelVillageCore, prepareCharacterFrame: preparePixelCharacterFrame, drawCharacter: drawPixelCharacter, renderCombatEffects: renderPixelCombatEffects, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
 
 function workforceHtml(counts) {
   return Object.entries(professionDefs).filter(([key]) => key !== "child" && (counts[key] || 0) > 0).map(([key, def]) => `<span class="profession-item" style="border-color:${def.color}">${def.icon} ${def.name}<b>${counts[key]}</b></span>`).join("") || `<span class="muted">暂无成年劳动力</span>`;
@@ -279,6 +279,7 @@ function render() {
     renderHeroMarker(ctx, m, p, sx, sy, r);
     renderDynastyMarker(ctx, m, p, sx, sy, r);
   }
+  renderPixelCombatEffects(ctx, m, artTime);
   renderExperienceEffects(ctx, m);
   drawPixelWeatherOverlay(ctx, m, climate, artTime);
   renderMapCursor(m);

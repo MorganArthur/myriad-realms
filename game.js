@@ -1,6 +1,7 @@
 "use strict";
 
 const { random, rand, randi, clamp, cleanText, smoothNoise, removeDeadEntities, setSeed, getRandomState, restoreRandomState, createRandomSeed, normalizeSeed } = globalThis.WorldEngine;
+const { spawnCombatEffect: spawnPixelCombatEffect } = globalThis.RealmPixelArt;
 const {
   map, terrainColors, kingdomColors, worldNames, races: raceDefs, animals: animalDefs, animalCaps, buildings: buildingDefs,
   tradeResources: tradeResourceDefs, professions: professionDefs, units: unitDefs, governments: governmentDefs, policies: policyDefs,
@@ -1894,6 +1895,7 @@ function militaryBehavior(person) {
     if (distance <= unit.range && person.attackCooldown <= 0) {
       const enemyUnit = unitDefs[nearbyEnemy.unitType] || unitDefs.militia, damage = rand(10, 21) * unit.attack * (raceDefs[person.race]?.combat || 1) * moraleFactor * supplyFactor * leadership * metallurgyBonus * heroCombatMultiplier(person) * (person.blessed ? 1.3 : 1) / enemyUnit.defense;
       nearbyEnemy.health -= damage;
+      spawnPixelCombatEffect(person.unitType, person.x, person.y, nearbyEnemy.x, nearbyEnemy.y, realm?.color || "#e56f57", performance.now() / 1000);
       if (distance <= enemyUnit.range && unit.range < 2.5) person.health -= rand(1, 6) * enemyUnit.attack / unit.defense;
       person.attackCooldown = unit.range > 2 ? 7 : unit.speed > 1.2 ? 4 : 5;
       if (nearbyEnemy.health <= 0) { if (nearbyEnemy.role === "soldier") recordSoldierCasualty(nearbyEnemy); nearbyEnemy.dead = true; recordHeroVictory(person); spawnExperienceEffect("battle", nearbyEnemy.x, nearbyEnemy.y, "#e56f57"); playExperienceSound("battle"); }
@@ -1907,6 +1909,7 @@ function militaryBehavior(person) {
     const walls = buildingCount(target, "wall"), siegePower = unit.siege || .72, wallResistance = unit.siege ? 1 + walls * .04 : 1 + walls * .22;
     const siegeDamage = rand(1.8, 4.2) * siegePower * moraleFactor * supplyFactor * leadership * metallurgyBonus / wallResistance;
     target.hp -= siegeDamage; person.attackCooldown = 5;
+    spawnPixelCombatEffect(unit.siege ? "siege" : person.unitType, person.x, person.y, target.x, target.y, realm?.color || "#e6a14c", performance.now() / 1000);
     if (army) army.siegeProgress += siegeDamage;
     if (walls && random() < .08 * siegePower) damageRandomBuilding(target, 1, rand(3, 7) * siegePower, "wall");
     if (target.hp <= 0) captureVillage(target, person.kingdom);
