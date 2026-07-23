@@ -16,7 +16,7 @@ function loadPixelArt(reducedMotion = false) {
 function recordingContext() {
   const calls = [];
   const context = { calls };
-  for (const method of ["beginPath", "closePath", "fill", "fillRect", "lineTo", "moveTo", "restore", "save", "stroke"]) context[method] = (...args) => calls.push([method, ...args]);
+  for (const method of ["arc", "beginPath", "closePath", "ellipse", "fill", "fillRect", "lineTo", "moveTo", "restore", "rotate", "save", "stroke", "strokeRect", "translate"]) context[method] = (...args) => calls.push([method, ...args]);
   return context;
 }
 
@@ -39,4 +39,16 @@ test("地形绘制会生成基础像素、细节和海岸泡沫", () => {
 test("环境动画限制为八帧并服从减少动态效果", () => {
   const art = loadPixelArt(); assert.equal(art.animationFrameDue(0), true); assert.equal(art.animationFrameDue(60), false); assert.equal(art.animationFrameDue(125), true);
   const reduced = loadPixelArt(true); assert.equal(reduced.prefersReducedMotion(), true); assert.equal(reduced.animationFrameDue(1000), false);
+});
+
+test("十二类建筑拥有独立轮廓、等级和损毁施工状态", () => {
+  const art = loadPixelArt(), types = Object.keys(art.buildingSilhouettes); assert.equal(types.length, 12); assert.equal(new Set(Object.values(art.buildingSilhouettes)).size, 12);
+  assert.deepEqual(JSON.parse(JSON.stringify(art.structureVisualState({ hp: 100, maxHp: 100, builtYear: 4 }, 3, 4.5))), { integrity: 1, level: 3, construction: true, damage: "intact" });
+  assert.equal(art.structureVisualState({ hp: 20, maxHp: 100, builtYear: 1 }, 1, 8).damage, "broken");
+  for (const [index, type] of types.entries()) {
+    const context = recordingContext(), structure = { id: index + 1, type, x: index, y: 2, hp: type === "wall" ? 25 : 80, maxHp: 100, builtYear: 4 };
+    art.drawStructure(context, { structure, definition: { color: "#765432" }, kingdomColor: "#cc8844", villageLevel: 3, currentYear: 4.4, sx: 20, sy: 20, size: 10, time: 2 });
+    assert.ok(context.calls.some(call => ["fillRect", "fill"].includes(call[0])), `${type} 没有绘制主体`);
+  }
+  const village = recordingContext(); art.drawVillageCore(village, { village: { id: 1, level: 3, hp: 30, x: 2, y: 3 }, kingdomColor: "#cc8844", sx: 20, sy: 20, size: 10, time: 2, maxHp: 100 }); assert.ok(village.calls.some(call => call[0] === "ellipse"));
 });

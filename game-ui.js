@@ -3,7 +3,7 @@
 // 视图层：检查面板、画布绘制与侧栏数据投影。
 // 运行时状态由 game.js 持有；此文件不改变模拟状态。
 
-const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
+const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, drawStructure: drawPixelStructure, drawVillageCore: drawPixelVillageCore, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
 
 function workforceHtml(counts) {
   return Object.entries(professionDefs).filter(([key]) => key !== "child" && (counts[key] || 0) > 0).map(([key, def]) => `<span class="profession-item" style="border-color:${def.color}">${def.icon} ${def.name}<b>${counts[key]}</b></span>`).join("") || `<span class="muted">暂无成年劳动力</span>`;
@@ -199,43 +199,14 @@ function renderArmies(m) {
   }
 }
 
-function renderStructures(m) {
+function renderStructures(m, artTime) {
   for (const village of villages) for (const structure of village.structures || []) {
     if (structure.type === "hall" || structure.hp <= 0) continue;
     const def = buildingDefs[structure.type], sx = m.ox + (structure.x + .5) * m.size, sy = m.oy + (structure.y + .5) * m.size;
     if (!def || sx < -16 || sy < -16 || sx > m.width + 16 || sy > m.height + 16) continue;
-    const size = Math.max(2, m.size * .72), integrity = clamp(structure.hp / structure.maxHp, .25, 1);
-    ctx.save(); ctx.globalAlpha = .55 + integrity * .45; ctx.fillStyle = def.color; ctx.strokeStyle = "#2b241c"; ctx.lineWidth = Math.max(1, m.size * .12);
-    if (structure.type === "road") {
-      ctx.fillStyle = def.color; ctx.fillRect(sx - m.size * .55, sy - m.size * .16, m.size * 1.1, m.size * .32); ctx.fillRect(sx - m.size * .16, sy - m.size * .55, m.size * .32, m.size * 1.1);
-    } else if (structure.type === "wall") {
-      ctx.fillRect(sx - size * .58, sy - size * .3, size * 1.16, size * .6); ctx.strokeRect(sx - size * .58, sy - size * .3, size * 1.16, size * .6);
-      ctx.fillStyle = "#b8b5a7"; ctx.fillRect(sx - size * .5, sy - size * .42, size * .22, size * .22); ctx.fillRect(sx + size * .28, sy - size * .42, size * .22, size * .22);
-    } else if (structure.type === "farm") {
-      ctx.fillRect(sx - size * .6, sy - size * .48, size * 1.2, size * .96); ctx.strokeStyle = "#7c6a31";
-      for (let line = -1; line <= 1; line++) { ctx.beginPath(); ctx.moveTo(sx - size * .5, sy + line * size * .25); ctx.lineTo(sx + size * .5, sy + line * size * .25); ctx.stroke(); }
-    } else if (structure.type === "dock") {
-      ctx.fillRect(sx - size * .55, sy - size * .2, size * 1.1, size * .4); ctx.fillRect(sx - size * .12, sy - size * .65, size * .24, size * 1.3);
-      ctx.fillStyle = "#d6d0ac"; ctx.fillRect(sx + size * .25, sy - size * .42, size * .12, size * .28);
-    } else if (structure.type === "market") {
-      ctx.fillRect(sx - size * .55, sy - size * .15, size * 1.1, size * .65); ctx.fillStyle = getKingdom(village.kingdom)?.color || "#d5c18a";
-      ctx.beginPath(); ctx.moveTo(sx - size * .65, sy - size * .12); ctx.lineTo(sx, sy - size * .68); ctx.lineTo(sx + size * .65, sy - size * .12); ctx.closePath(); ctx.fill();
-    } else if (structure.type === "warehouse") {
-      ctx.fillRect(sx - size * .58, sy - size * .48, size * 1.16, size * .96); ctx.strokeRect(sx - size * .58, sy - size * .48, size * 1.16, size * .96);
-      ctx.strokeStyle = "#d3bb82"; ctx.beginPath(); ctx.moveTo(sx - size * .5, sy - size * .12); ctx.lineTo(sx + size * .5, sy - size * .12); ctx.moveTo(sx, sy - size * .4); ctx.lineTo(sx, sy + size * .4); ctx.stroke();
-    } else if (structure.type === "temple") {
-      ctx.fillRect(sx - size * .4, sy - size * .15, size * .8, size * .65); ctx.beginPath(); ctx.moveTo(sx - size * .55, sy - size * .15); ctx.lineTo(sx, sy - size * .75); ctx.lineTo(sx + size * .55, sy - size * .15); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "#eadb91"; ctx.fillRect(sx - size * .07, sy - size * .68, size * .14, size * .25);
-    } else if (structure.type === "quarry") {
-      ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.PI / 4); ctx.fillRect(-size * .42, -size * .42, size * .84, size * .84); ctx.strokeRect(-size * .42, -size * .42, size * .84, size * .84); ctx.restore();
-    } else if (structure.type === "lumber") {
-      for (let log = -1; log <= 1; log++) ctx.fillRect(sx - size * .55, sy + log * size * .22 - size * .08, size * 1.1, size * .16);
-    } else {
-      ctx.fillRect(sx - size * .5, sy - size * .35, size, size * .85); ctx.strokeRect(sx - size * .5, sy - size * .35, size, size * .85);
-      ctx.fillStyle = structure.type === "barracks" ? "#d9c7a7" : "#4f3526"; ctx.beginPath(); ctx.moveTo(sx - size * .62, sy - size * .35); ctx.lineTo(sx, sy - size * .75); ctx.lineTo(sx + size * .62, sy - size * .35); ctx.closePath(); ctx.fill();
-    }
-    if (m.size > 8 && integrity < .72) { ctx.fillStyle = "#2a1715"; ctx.fillRect(sx - size * .55, sy + size * .72, size * 1.1, 2); ctx.fillStyle = "#dc654f"; ctx.fillRect(sx - size * .55, sy + size * .72, size * 1.1 * integrity, 2); }
-    ctx.restore();
+    const size = Math.max(2, m.size * .72), integrity = clamp(structure.hp / structure.maxHp, 0, 1), kingdomColor = getKingdom(village.kingdom)?.color || "#d5c18a";
+    drawPixelStructure(ctx, { structure, definition: def, kingdomColor, villageLevel: village.level, currentYear: year, sx, sy, size, time: artTime });
+    if (m.size > 8 && integrity < .72) { ctx.fillStyle = "#2a1715"; ctx.fillRect(sx - size * .55, sy + size * .82, size * 1.1, 2); ctx.fillStyle = "#dc654f"; ctx.fillRect(sx - size * .55, sy + size * .82, size * 1.1 * integrity, 2); }
   }
 }
 
@@ -272,7 +243,7 @@ function render() {
     if (isLand(t) && (t.biomass || 0) < .18) { ctx.fillStyle = "#6d593724"; ctx.fillRect(sx, sy, Math.ceil(m.size), Math.ceil(m.size)); }
   }
   renderTradeRoutes(m);
-  renderStructures(m);
+  renderStructures(m, artTime);
   renderLegacyMarkers(ctx, m);
   renderDisasters(m);
   for (const animal of animals) {
@@ -289,11 +260,8 @@ function render() {
   for (const v of villages) {
     const sx = m.ox + (v.x + .5) * m.size, sy = m.oy + (v.y + .5) * m.size, k = getKingdom(v.kingdom);
     if (sx < -30 || sy < -30 || sx > m.width + 30 || sy > m.height + 30) continue;
-    ctx.save(); ctx.fillStyle = "#0c100aa0"; ctx.beginPath(); ctx.ellipse(sx, sy + m.size * .68, m.size * 1.25, m.size * .52, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#3b2518"; ctx.fillRect(sx - m.size * .8, sy - m.size * .65, m.size * 1.6, m.size * 1.3);
-    ctx.strokeStyle = "#f4dd9c70"; ctx.lineWidth = Math.max(1, m.size * .12); ctx.strokeRect(sx - m.size * .8, sy - m.size * .65, m.size * 1.6, m.size * 1.3);
-    ctx.fillStyle = k?.color || "#ddd"; ctx.beginPath(); ctx.moveTo(sx - m.size, sy - m.size * .6); ctx.lineTo(sx, sy - m.size * 1.15); ctx.lineTo(sx + m.size, sy - m.size * .6); ctx.closePath(); ctx.fill(); ctx.restore();
     const maxHp = villageMaxHp(v);
+    drawPixelVillageCore(ctx, { village: v, kingdomColor: k?.color || "#ddd", sx, sy, size: m.size, time: artTime, maxHp });
     if (v.hp < maxHp * .9) { ctx.fillStyle = "#351a17"; ctx.fillRect(sx - m.size, sy + m.size, m.size * 2, Math.max(2, m.size * .2)); ctx.fillStyle = "#d65a43"; ctx.fillRect(sx - m.size, sy + m.size, m.size * 2 * clamp(v.hp / maxHp, 0, 1), Math.max(2, m.size * .2)); }
     if (m.size > 5) { ctx.fillStyle = "#fff0c9"; ctx.font = `${Math.max(9, m.size * 1.25)}px Microsoft YaHei`; ctx.textAlign = "center"; ctx.fillText(v.name, sx, sy - m.size * 1.3); }
   }
