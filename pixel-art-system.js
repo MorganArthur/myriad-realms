@@ -15,8 +15,16 @@
   });
   const accents = Object.freeze({ foam: "#bce7e2", grassLight: "#9bbb5d", forestDark: "#173b22", forestLight: "#4f7b3e", sandLight: "#ead28a", rockLight: "#aeb09e", rockDark: "#464b45", snow: "#dce8df", ember: "#ff9250" });
   const buildingSilhouettes = Object.freeze({ hall: "civic-core", house: "gable-home", farm: "furrow-field", lumber: "timber-yard", quarry: "cut-stone", barracks: "fortified-roof", road: "crossroad", wall: "battlement", market: "striped-canopy", dock: "pier-sail", warehouse: "double-door", temple: "high-spire" });
+  const raceSpritePalettes = Object.freeze({
+    human: Object.freeze({ skin: "#e2b184", shadow: "#a86f54", hair: ["#4b3024", "#725039", "#c08a4e"] }),
+    elf: Object.freeze({ skin: "#d9c99a", shadow: "#9b916b", hair: ["#d7dfb4", "#8fb889", "#b9a9d5"] }),
+    dwarf: Object.freeze({ skin: "#d29a72", shadow: "#8f5c47", hair: ["#5c3828", "#a85e38", "#d0a064"] }),
+    orc: Object.freeze({ skin: "#78984f", shadow: "#465f35", hair: ["#292a25", "#4a4031", "#613c32"] })
+  });
   const reducedMotionQuery = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)") || null;
   let lastAnimationFrame = -Infinity;
+  const characterMotion = new Map();
+  let characterFrameCounter = 0;
 
   function visualHash(x, y, salt = 0) {
     let value = Math.imul((x | 0) + 17, 374761393) ^ Math.imul((y | 0) + 31, 668265263) ^ Math.imul((salt | 0) + 7, 1442695041);
@@ -101,6 +109,52 @@
     context.restore();
   }
 
+  function prepareCharacterFrame(people, time = 0) {
+    const frames = new Map(), active = new Set(); characterFrameCounter++;
+    for (const person of people || []) {
+      if (!person || person.dead) continue; active.add(person.id); const previous = characterMotion.get(person.id), dx = previous ? person.x - previous.x : 0, dy = previous ? person.y - previous.y : 0, moved = Math.abs(dx) + Math.abs(dy) > .01;
+      const direction = moved ? Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? "east" : "west") : (dy >= 0 ? "south" : "north") : previous?.direction || "south", movingUntil = moved ? time + .48 : previous?.movingUntil || 0;
+      const moving = time < movingUntil, profession = person.profession || "laborer", working = !moving && person.role !== "soldier" && !["child", "laborer"].includes(profession);
+      const frame = { direction, moving, working, walkPhase: Math.floor((time * 8 + (person.id || 0) * .73) % 4), workPhase: Math.floor((time * 5 + (person.id || 0) * .41) % 4) };
+      frames.set(person.id, frame); characterMotion.set(person.id, { x: person.x, y: person.y, direction, movingUntil });
+    }
+    if (characterFrameCounter % 90 === 0) for (const id of characterMotion.keys()) if (!active.has(id)) characterMotion.delete(id);
+    return frames;
+  }
+
+  function drawProfessionTool(context, profession, sx, sy, unit, direction, phase, color) {
+    const side = direction === "west" ? -1 : 1, swing = (phase - 1.5) * unit * .13; context.strokeStyle = color || "#dfc37d"; context.fillStyle = color || "#dfc37d"; context.lineWidth = Math.max(1, unit * .28);
+    if (["farmer", "lumberjack", "miner", "builder"].includes(profession)) {
+      context.beginPath(); context.moveTo(sx + side * unit * .62, sy - unit * .05); context.lineTo(sx + side * (unit * 1.25 + swing), sy + unit * .9); context.stroke();
+      if (profession === "farmer") context.fillRect(sx + side * (unit * 1.18 + swing) - unit * .28, sy + unit * .78, unit * .56, Math.max(1, unit * .18));
+      if (profession === "lumberjack") { context.fillStyle = "#c6d0c3"; context.fillRect(sx + side * (unit * 1.18 + swing) - unit * .28, sy + unit * .7, unit * .55, unit * .34); }
+      if (profession === "miner") { context.beginPath(); context.moveTo(sx + side * (unit * .85 + swing), sy + unit * .62); context.lineTo(sx + side * (unit * 1.48 + swing), sy + unit * .62); context.stroke(); }
+      if (profession === "builder") { context.fillStyle = "#b5b3ab"; context.fillRect(sx + side * (unit * 1.06 + swing) - unit * .25, sy + unit * .65, unit * .5, unit * .36); }
+    } else if (profession === "merchant") {
+      context.fillStyle = color || "#c69bd4"; context.fillRect(sx + side * unit * .66, sy + unit * .18, unit * .65, unit * .72); context.strokeRect(sx + side * unit * .66, sy + unit * .18, unit * .65, unit * .72);
+    } else if (profession === "healer") {
+      const pulse = .72 + phase * .08; context.fillStyle = color || "#79d5b4"; context.globalAlpha = pulse; context.fillRect(sx + side * unit * .86, sy + unit * .12, unit * .25, unit); context.fillRect(sx + side * unit * .48, sy + unit * .5, unit, unit * .25);
+    }
+  }
+
+  function drawCharacter(context, options) {
+    const { person, kingdomColor = "#c99a61", professionColor = "#d9c07c", sx, sy, size: tileSize, time = 0, motion = {} } = options, race = raceSpritePalettes[person?.race] || raceSpritePalettes.human, hash = visualHash(person?.id || 0, person?.race?.length || 0), childScale = person?.profession === "child" || Number(person?.age) < 14 ? .72 : 1;
+    const unit = Math.max(1.15, Math.min(3.7, tileSize * .23)) * childScale, direction = motion.direction || "south", walk = motion.moving && !prefersReducedMotion() ? (motion.walkPhase % 2 ? 1 : -1) : 0, bob = prefersReducedMotion() ? 0 : motion.moving ? Math.abs(Math.sin(time * 9 + hash % 5)) * unit * .22 : Math.sin(time * 2 + hash % 7) * unit * .06, centerY = sy - bob, hair = race.hair[hash % race.hair.length], side = direction === "west" ? -1 : 1;
+    context.save(); context.fillStyle = "#07100ca0"; context.globalAlpha = .5; context.beginPath(); context.ellipse(sx, sy + unit * 1.16, unit * .9, unit * .34, 0, 0, Math.PI * 2); context.fill(); context.globalAlpha = person?.blessed ? 1 : .96;
+    context.fillStyle = race.shadow; context.fillRect(sx - unit * .56 + walk * unit * .18, centerY + unit * .55, unit * .42, unit * .8); context.fillRect(sx + unit * .14 - walk * unit * .18, centerY + unit * .55, unit * .42, unit * .8);
+    if (person?.race === "dwarf") {
+      context.fillStyle = kingdomColor; context.fillRect(sx - unit * .88, centerY - unit * .25, unit * 1.76, unit * 1.25); context.fillStyle = race.skin; context.fillRect(sx - unit * .55, centerY - unit * 1.02, unit * 1.1, unit * .9); context.fillStyle = hair; context.beginPath(); context.moveTo(sx - unit * .5, centerY - unit * .25); context.lineTo(sx, centerY + unit * .72); context.lineTo(sx + unit * .5, centerY - unit * .25); context.closePath(); context.fill();
+    } else if (person?.race === "orc") {
+      context.fillStyle = kingdomColor; context.fillRect(sx - unit * .78, centerY - unit * .32, unit * 1.56, unit * 1.38); context.fillStyle = race.skin; context.fillRect(sx - unit * .64, centerY - unit * 1.22, unit * 1.28, unit); context.fillStyle = hair; context.fillRect(sx - unit * .62, centerY - unit * 1.3, unit * 1.24, unit * .28); context.fillStyle = "#eee0b3"; context.fillRect(sx - unit * .48, centerY - unit * .28, unit * .18, unit * .28); context.fillRect(sx + unit * .3, centerY - unit * .28, unit * .18, unit * .28);
+    } else {
+      const slender = person?.race === "elf" ? .58 : .68; context.fillStyle = kingdomColor; context.fillRect(sx - unit * slender, centerY - unit * .28, unit * slender * 2, unit * 1.35); context.fillStyle = race.skin; context.fillRect(sx - unit * .54, centerY - unit * 1.2, unit * 1.08, unit * .96); context.fillStyle = hair; context.fillRect(sx - unit * .56, centerY - unit * 1.3, unit * 1.12, unit * .32);
+      if (person?.race === "elf") { context.fillStyle = race.skin; context.beginPath(); context.moveTo(sx - unit * .52, centerY - unit * .98); context.lineTo(sx - unit * 1.04, centerY - unit * .72); context.lineTo(sx - unit * .5, centerY - unit * .55); context.closePath(); context.fill(); context.beginPath(); context.moveTo(sx + unit * .52, centerY - unit * .98); context.lineTo(sx + unit * 1.04, centerY - unit * .72); context.lineTo(sx + unit * .5, centerY - unit * .55); context.closePath(); context.fill(); }
+    }
+    if (tileSize > 6) { context.fillStyle = "#171b18"; const eyeY = centerY - unit * .78; context.fillRect(sx + side * unit * .22, eyeY, Math.max(1, unit * .16), Math.max(1, unit * .16)); }
+    if (tileSize > 5.5 && person?.role !== "soldier" && person?.profession !== "child") drawProfessionTool(context, person?.profession, sx, centerY, unit, direction, motion.working ? motion.workPhase || 0 : 1, professionColor);
+    context.restore(); return { radius: unit * 1.05, unit, centerY };
+  }
+
   function structureVisualState(structure, villageLevel = 1, currentYear = 1) {
     const integrity = Math.max(0, Math.min(1, Number(structure?.hp) / Math.max(1, Number(structure?.maxHp) || 1))), level = Math.max(1, Math.min(3, Math.floor(Number(villageLevel) || 1)));
     return { integrity, level, construction: currentYear > 1 && currentYear - (Number(structure?.builtYear) || currentYear) < .8, damage: integrity < .35 ? "broken" : integrity < .72 ? "worn" : "intact" };
@@ -164,5 +218,5 @@
     drawDamageAndConstruction(context, sx, sy, size, { integrity, level, construction: false, damage: integrity < .35 ? "broken" : integrity < .72 ? "worn" : "intact" }, time, hash); context.restore();
   }
 
-  globalThis.RealmPixelArt = Object.freeze({ terrainPalettes, accents, buildingSilhouettes, visualHash, prefersReducedMotion, animationFrameDue, terrainColor, drawTerrainTile, drawWeatherOverlay, structureVisualState, drawStructure, drawVillageCore });
+  globalThis.RealmPixelArt = Object.freeze({ terrainPalettes, accents, buildingSilhouettes, raceSpritePalettes, visualHash, prefersReducedMotion, animationFrameDue, terrainColor, drawTerrainTile, drawWeatherOverlay, prepareCharacterFrame, drawCharacter, structureVisualState, drawStructure, drawVillageCore });
 })();

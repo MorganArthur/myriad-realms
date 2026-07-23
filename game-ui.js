@@ -3,7 +3,7 @@
 // 视图层：检查面板、画布绘制与侧栏数据投影。
 // 运行时状态由 game.js 持有；此文件不改变模拟状态。
 
-const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, drawStructure: drawPixelStructure, drawVillageCore: drawPixelVillageCore, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
+const { drawTerrainTile: drawPixelTerrainTile, drawWeatherOverlay: drawPixelWeatherOverlay, drawStructure: drawPixelStructure, drawVillageCore: drawPixelVillageCore, prepareCharacterFrame: preparePixelCharacterFrame, drawCharacter: drawPixelCharacter, animationFrameDue: pixelArtAnimationFrameDue } = globalThis.RealmPixelArt;
 
 function workforceHtml(counts) {
   return Object.entries(professionDefs).filter(([key]) => key !== "child" && (counts[key] || 0) > 0).map(([key, def]) => `<span class="profession-item" style="border-color:${def.color}">${def.icon} ${def.name}<b>${counts[key]}</b></span>`).join("") || `<span class="muted">暂无成年劳动力</span>`;
@@ -267,17 +267,13 @@ function render() {
   }
   renderCaravans(m);
   renderArmies(m);
+  const characterFrames = preparePixelCharacterFrame(people, artTime);
   for (const p of people) {
     const sx = m.ox + (p.x + .5) * m.size, sy = m.oy + (p.y + .5) * m.size, k = getKingdom(p.kingdom);
     if (sx < -8 || sy < -8 || sx > m.width + 8 || sy > m.height + 8) continue;
-    ctx.fillStyle = p.blessed ? "#fff18a" : p.plague > 0 ? "#9dcc58" : k?.color || "#f1d2a2";
-    const r = clamp(m.size * .32, 1.5, 4.5);
-    if (p.role === "soldier") { ctx.fillRect(sx - r, sy - r, r * 2, r * 2); ctx.strokeStyle = "#fff4d1"; ctx.lineWidth = 1; ctx.strokeRect(sx - r, sy - r, r * 2, r * 2); }
-    else if (p.race === "elf") { ctx.beginPath(); ctx.moveTo(sx, sy - r); ctx.lineTo(sx + r, sy + r); ctx.lineTo(sx - r, sy + r); ctx.fill(); }
-    else if (p.race === "dwarf") ctx.fillRect(sx - r, sy - r * .72, r * 2, r * 1.44);
-    else if (p.race === "orc") { ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.PI / 4); ctx.fillRect(-r * .72, -r * .72, r * 1.44, r * 1.44); ctx.restore(); }
-    else { ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); }
-    if (m.size > 6) { const marker = p.role === "soldier" ? unitDefs[p.unitType] || unitDefs.militia : professionDefs[p.profession] || professionDefs.laborer; ctx.fillStyle = marker.color; ctx.fillRect(sx - r, sy + r + 1, r * 2, Math.max(1, m.size * .16)); }
+    const marker = p.role === "soldier" ? unitDefs[p.unitType] || unitDefs.militia : professionDefs[p.profession] || professionDefs.laborer;
+    const sprite = drawPixelCharacter(ctx, { person: p, kingdomColor: p.blessed ? "#efd46d" : p.plague > 0 ? "#789c55" : k?.color || "#c99a61", professionColor: marker.color, sx, sy, size: m.size, time: artTime, motion: characterFrames.get(p.id) });
+    const r = sprite.radius;
     if (p.isGeneral && m.size > 5) { ctx.fillStyle = "#ffe37d"; ctx.beginPath(); ctx.moveTo(sx, sy - r - 3); ctx.lineTo(sx + 2.5, sy - r + 1); ctx.lineTo(sx - 2.5, sy - r + 1); ctx.closePath(); ctx.fill(); }
     if (p.plague > 0 && m.size > 5) { ctx.strokeStyle = "#c2ed74"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, r + 1.5, 0, Math.PI * 2); ctx.stroke(); }
     renderHeroMarker(ctx, m, p, sx, sy, r);

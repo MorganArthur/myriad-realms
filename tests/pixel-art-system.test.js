@@ -52,3 +52,21 @@ test("十二类建筑拥有独立轮廓、等级和损毁施工状态", () => {
   }
   const village = recordingContext(); art.drawVillageCore(village, { village: { id: 1, level: 3, hp: 30, x: 2, y: 3 }, kingdomColor: "#cc8844", sx: 20, sy: 20, size: 10, time: 2, maxHp: 100 }); assert.ok(village.calls.some(call => call[0] === "ellipse"));
 });
+
+test("四种族角色拥有独立像素轮廓并区分儿童比例", () => {
+  const art = loadPixelArt(), races = Object.keys(art.raceSpritePalettes); assert.deepEqual(races, ["human", "elf", "dwarf", "orc"]);
+  for (const [index, race] of races.entries()) {
+    const context = recordingContext(), sprite = art.drawCharacter(context, { person: { id: index + 1, race, age: 24, profession: "farmer" }, sx: 10, sy: 10, size: 12, time: 2, motion: { direction: "east", working: true, workPhase: 2 } });
+    assert.ok(context.calls.some(call => call[0] === "fillRect"), `${race} 没有绘制身体`); assert.ok(sprite.radius > 1);
+  }
+  const adult = art.drawCharacter(recordingContext(), { person: { id: 8, race: "human", age: 24, profession: "builder" }, sx: 0, sy: 0, size: 12 });
+  const child = art.drawCharacter(recordingContext(), { person: { id: 9, race: "human", age: 8, profession: "child" }, sx: 0, sy: 0, size: 12 });
+  assert.ok(child.unit < adult.unit);
+});
+
+test("角色动作状态会识别移动方向、步伐与职业工作节奏", () => {
+  const art = loadPixelArt(), person = { id: 77, race: "elf", age: 30, profession: "healer", x: 3, y: 4 };
+  assert.equal(art.prepareCharacterFrame([person], 1).get(77).moving, false);
+  person.x = 4; const moving = art.prepareCharacterFrame([person], 1.1).get(77); assert.equal(moving.moving, true); assert.equal(moving.direction, "east");
+  const working = art.prepareCharacterFrame([person], 2).get(77); assert.equal(working.moving, false); assert.equal(working.working, true);
+});
