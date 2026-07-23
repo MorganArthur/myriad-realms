@@ -26,3 +26,11 @@ test("三张像素图集存在且包含有效 PNG 尺寸", () => {
     assert.equal(buffer.subarray(1, 4).toString(), "PNG"); assert.ok(buffer.readUInt32BE(16) >= 1000); assert.ok(buffer.readUInt32BE(20) >= 900);
   }
 });
+
+test("视觉回归页完整展示二十六个图集画格", () => {
+  const html = fs.readFileSync(path.resolve(__dirname, "visual-art-preview.html"), "utf8");
+  assert.equal([...html.matchAll(/class="preview-card"/g)].length, 26);
+  assert.equal([...html.matchAll(/class="hero-art preview-hero"/g)].length, 6);
+  assert.equal([...html.matchAll(/class="legacy-atlas-art preview-legacy"/g)].length, 8);
+  assert.equal([...html.matchAll(/class="event-art preview-event"/g)].length, 12);
+});

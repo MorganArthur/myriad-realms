@@ -204,16 +204,16 @@
 - 时代和野心共用按模拟帧缓存的世界统计，一次遍历汇总森林、商路、交付与英雄，不会为每个文明或每张界面卡重复扫描整张地图。
 - 军团使用空间索引统计附近敌军，不再为每支军团扫描全部人口；生态模拟采用等价的自适应批处理，高实体数量时自动降低遍历频率。
 - 地图绘制会裁剪视口外实体；底部性能监测实时显示 FPS、UPS、模拟耗时和绘制耗时。
-- 暂停时停止重复重绘；高倍速掉帧时限制追赶步数，优先保持界面响应。
+- 暂停时停止模拟步进，环境美术仅按自适应低频节奏刷新；高倍速掉帧时限制追赶步数，优先保持界面响应。
 
 ## 工程与测试
 
-- `engine-core.js` 提供确定性随机数、数值、文本清理、噪声生成和实体压缩；`world-config.js` 集中管理静态规则与平衡参数；`pixel-art-system.js` 管理原创像素色板、确定性地形细节和低频环境动画；`world-event-content.js` 和 `regional-event-content.js` 分别保存十二条大型事件与三十条区域事件的纯数据定义；`experience-system.js` 管理教程、外交记忆、英雄、事件执行、地图模式、特效和音频；`long-term-system.js` 管理文明时代、野心、里程碑与传承效果；`dynasty-system.js` 管理人物身份、家谱、关系、王朝、继承与摄政；`politics-system.js` 管理派系、议会、政策议题与内部危机；`legacy-system.js` 管理区域事件调度、历史伤痕、神器流转、奇观耐久、全球危机与轮换挑战；`world-challenge-system.js` 管理组合规则、挑战码、评分和跨世界档案。
+- `engine-core.js` 提供确定性随机数、数值、文本清理、噪声生成和实体压缩；`world-config.js` 集中管理静态规则与平衡参数；`pixel-art-system.js` 管理原创像素色板、确定性地形细节、角色建筑和低频动画；`art-atlas.js` 集中映射英雄、神器、奇观和事件插图；`world-event-content.js` 和 `regional-event-content.js` 分别保存十二条大型事件与三十条区域事件的纯数据定义；`experience-system.js` 管理教程、外交记忆、英雄、事件执行、地图模式、特效和音频；`long-term-system.js` 管理文明时代、野心、里程碑与传承效果；`dynasty-system.js` 管理人物身份、家谱、关系、王朝、继承与摄政；`politics-system.js` 管理派系、议会、政策议题与内部危机；`legacy-system.js` 管理区域事件调度、历史伤痕、神器流转、奇观耐久、全球危机与轮换挑战；`world-challenge-system.js` 管理组合规则、挑战码、评分和跨世界档案。
 - `game.js` 只保留世界状态与模拟规则；`game-ui.js` 负责检查面板和画布绘制；`game-persistence.js` 负责 v22 存档、旧档迁移与导入导出，页面按显式依赖顺序加载。
 - `tests/headless-world.js` 会在无浏览器环境中启动真实游戏模拟，而不是另写一套简化规则；确定性测试覆盖同种子演化、异种子差异、事件链参与者与互斥路线、延迟后果和存档随机时间线续接。
 - 运行 `npm test` 执行确定性、核心工具、DOM 完整性、模块边界、存档版本与性能保护测试；运行 `npm run check` 会额外执行所有脚本语法检查。
 - `npm run balance:quick` 用 5 个固定种子跑到纪元 50；`npm run balance` 用 12 个固定种子执行完整平衡门禁，检查人口异常、文明灭绝、种族垄断、饥荒、战争覆盖率和食物网完整度。
-- [八阶段验收报告](docs/roadmap-audit.md)逐项记录长期内容路线的代码、界面、存档和测试证据；[平衡基线](docs/balance-report.md)记录固定种子结果与门禁阈值。
+- [八阶段验收报告](docs/roadmap-audit.md)逐项记录长期内容路线的代码、界面、存档和测试证据；[原创像素美术验收](docs/visual-art-audit.md)记录六步视觉升级与浏览器回归；[平衡基线](docs/balance-report.md)记录固定种子结果与门禁阈值。
 - GitHub Actions 会在每次推送和拉取请求时自动运行完整检查与五种子快速平衡门禁，无需安装第三方依赖。
 
 ## 运行

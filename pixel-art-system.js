@@ -47,7 +47,7 @@
     const { tile, x, y, sx, sy, size, time = 0, coastTop = false, coastLeft = false } = options;
     if (!tile) return;
     const hash = visualHash(x, y), frame = prefersReducedMotion() ? 0 : Math.floor(time * 4), pixel = Math.max(1, Math.floor(size * .11));
-    context.save(); context.fillStyle = terrainColor(tile.fire ? "fire" : tile.type, hash, tile.fire ? frame : 0); context.fillRect(sx, sy, Math.ceil(size + .5), Math.ceil(size + .5));
+    context.globalAlpha = 1; context.fillStyle = terrainColor(tile.fire ? "fire" : tile.type, hash, tile.fire ? frame : 0); context.fillRect(sx, sy, Math.ceil(size + .5), Math.ceil(size + .5));
     if (size > 4 && ["deep", "water"].includes(tile.type) && hash % 3 === 0) {
       const wave = ((frame + hash % 9) % 9) / 9, width = size * (tile.type === "deep" ? .48 : .62);
       context.globalAlpha = tile.type === "deep" ? .2 : .34; context.fillStyle = tile.type === "deep" ? "#6da5bb" : "#a8dbd8";
@@ -80,7 +80,7 @@
       const foamPulse = prefersReducedMotion() ? .52 : .42 + (Math.sin(time * 2.4 + hash % 7) + 1) * .1; context.globalAlpha = foamPulse; context.fillStyle = accents.foam; const thickness = Math.max(1, size * .11);
       if (coastTop) context.fillRect(sx, sy, size, thickness); if (coastLeft) context.fillRect(sx, sy, thickness, size);
     }
-    context.restore();
+    context.globalAlpha = 1;
   }
 
   function movingPoint(index, width, height, time, speedX, speedY, salt) {

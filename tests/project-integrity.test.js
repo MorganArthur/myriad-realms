@@ -25,6 +25,7 @@ const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const balanceReport = fs.readFileSync(path.join(root, "docs", "balance-report.md"), "utf8");
 const roadmapAudit = fs.readFileSync(path.join(root, "docs", "roadmap-audit.md"), "utf8");
+const visualArtAudit = fs.readFileSync(path.join(root, "docs", "visual-art-audit.md"), "utf8");
 const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "validate.yml"), "utf8");
 
 test("运行脚本按依赖顺序加载", () => {
@@ -201,8 +202,10 @@ test("视觉层保留工具分组、原创地形动画与低动态适配", () =>
 });
 
 test("发布文档、自动化门禁与八阶段验收保持同步", () => {
-  assert.equal(packageData.version, "0.20.0");
-  assert.match(balanceReport, /v0\.20\.0/); assert.match(balanceReport, /完整食物网存续率 91\.67%/);
+  assert.equal(packageData.version, "0.21.0");
+  assert.match(balanceReport, /v0\.21\.0/); assert.match(balanceReport, /完整食物网存续率 91\.67%/);
   for (let stage = 1; stage <= 8; stage++) assert.match(roadmapAudit, new RegExp(`阶段 ${stage}`));
+  for (const item of ["环境地形", "建筑", "四种族角色", "战斗", "天灾", "内容插图"]) assert.match(visualArtAudit, new RegExp(item));
+  assert.match(visualArtAudit, /26 个画格/);
   assert.match(workflow, /npm run check/); assert.match(workflow, /npm run balance:quick/);
 });
