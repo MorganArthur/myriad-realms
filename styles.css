@@ -400,10 +400,15 @@ footer { padding: 0 16px; border-top-color: #3a4633; background: linear-gradient
 .relation-item > small, .relation-item > em { grid-column: 1 / -1; display: block; font-style: normal; }
 .relation-item > small { color: #b9b18e; font-size: 8px; }
 .relation-item > em { color: #7f8978; font-size: 8px; line-height: 1.35; }
-.hero-item { width: 100%; padding: 7px 8px; border: 1px solid color-mix(in srgb, var(--hero-color) 55%, #404839); border-left: 3px solid var(--hero-color); border-radius: 6px; color: #e8e3ca; background: linear-gradient(145deg, #1c251b, #111711); text-align: left; cursor: pointer; }
+.hero-item { display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: center; width: 100%; min-height: 62px; padding: 5px 8px 5px 5px; border: 1px solid color-mix(in srgb, var(--hero-color) 55%, #404839); border-left: 3px solid var(--hero-color); border-radius: 6px; color: #e8e3ca; background: linear-gradient(145deg, #1c251b, #111711); text-align: left; cursor: pointer; }
 .hero-item:hover { transform: translateX(2px); filter: brightness(1.14); }
 .hero-item b { display: block; color: var(--hero-color); font-size: 10px; }
 .hero-item span { color: var(--muted); font-size: 8px; }
+.hero-copy { min-width: 0; }
+.hero-art { background-image: url("assets/art/hero-archetypes.png"); background-repeat: no-repeat; background-size: 300% 200%; background-position: var(--art-x) var(--art-y); image-rendering: pixelated; }
+.hero-list-art { display: block; width: 36px; aspect-ratio: 2 / 3; border: 1px solid color-mix(in srgb, var(--hero-color) 58%, #8c7440); border-radius: 3px; box-shadow: inset 0 0 0 1px #0a0e0acc; }
+.hero-detail-art, .legacy-detail-art { float: left; width: 88px; margin: 0 11px 8px 0; border: 1px solid #9f8248; border-radius: 6px; box-shadow: 0 6px 14px #0008; }
+.hero-detail-art { aspect-ratio: 2 / 3; }
 .hero-item.legacy { opacity: .68; filter: grayscale(.35); }
 
 .world-event-summary { width: 100%; padding: 8px 9px; border: 1px solid #5b5f42; border-radius: 7px; color: #cfc8a9; background: linear-gradient(145deg, #1f271d, #141913); text-align: left; }
@@ -417,6 +422,8 @@ button.world-event-summary { cursor: pointer; }
 .world-event-backdrop { z-index: 20; background: radial-gradient(circle at 50% 40%, #5b492446, #080b08e8 52%); }
 .world-event-modal { width: min(650px, 90vw); padding: 26px; border: 1px solid #b3944f; border-radius: 14px; background: linear-gradient(150deg, #303a28, #151b15 62%, #101510); box-shadow: 0 30px 100px #000f, inset 0 1px #fff2; text-align: center; }
 .world-event-icon { margin-bottom: 5px; font-size: 42px; filter: drop-shadow(0 5px 8px #000a); }
+.event-art { background-image: url("assets/art/world-events.png"); background-repeat: no-repeat; background-size: 400% 300%; background-position: var(--art-x) var(--art-y); image-rendering: pixelated; }
+.world-event-art { width: min(290px, 100%); aspect-ratio: 9 / 8; margin: -8px auto 12px; border: 1px solid #b3944f; border-radius: 8px; box-shadow: 0 10px 28px #0009, inset 0 0 0 1px #fff1; }
 .world-event-modal > small { color: #bbad7d; font-size: 9px; letter-spacing: 1px; }
 .world-event-modal h2 { margin: 8px 0; color: #ffe5a1; font-size: 26px; }
 .world-event-modal > p { max-width: 520px; margin: 0 auto 20px; color: #d1d0ba; font-size: 12px; line-height: 1.75; }
@@ -570,6 +577,12 @@ button.world-event-summary { cursor: pointer; }
 .legacy-site > i em, .wonder-project > i em, .world-crisis > i em, .world-challenge > i em { display: block; height: 100%; background: var(--legacy-color, var(--wonder-color, var(--crisis-color, #c5a65d))); }
 .artifact-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
 .artifact-chip { display: inline-flex; padding: 4px 6px; border: 1px solid color-mix(in srgb, var(--artifact-color) 60%, #4e503f); border-radius: 999px; color: var(--artifact-color); background: color-mix(in srgb, var(--artifact-color) 8%, #171b15); font-size: 8px; }
+.legacy-atlas-art, .artifact-chip.has-art::before, .wonder-project.has-art::before, .legacy-site.wonder.has-art::before { background-image: url("assets/art/artifacts-wonders.png"); background-repeat: no-repeat; background-size: 400% 200%; background-position: var(--art-x) var(--art-y); image-rendering: pixelated; }
+.legacy-detail-art { aspect-ratio: 427 / 458; }
+.artifact-chip.has-art { align-items: center; padding-left: 4px; }
+.artifact-chip.has-art::before { content: ""; width: 22px; aspect-ratio: 427 / 458; margin-right: 4px; border: 1px solid #8b7648; border-radius: 4px; }
+.wonder-project.has-art, .legacy-site.wonder.has-art { position: relative; min-height: 54px; padding-left: 54px; }
+.wonder-project.has-art::before, .legacy-site.wonder.has-art::before { content: ""; position: absolute; top: 5px; bottom: 5px; left: 5px; aspect-ratio: 427 / 458; border: 1px solid #8b7648; border-radius: 4px; }
 .artifact-chip, .legacy-actions button { cursor: pointer; }
 .legacy-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 8px; }
 .legacy-actions button { padding: 6px 4px; border: 1px solid #665c42; border-radius: 5px; color: #d9c997; background: linear-gradient(145deg, #2c281c, #1c1d17); font-size: 8px; }

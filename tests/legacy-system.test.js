@@ -61,6 +61,14 @@ test("神器可由英雄携带、受损、易主、失落并从历史伤痕中�
   assert.notEqual(artifact[6], "lost"); assert.equal(artifact[2], secondKingdomId); assert.equal(snapshot.history.artifactsLost, 1);
 });
 
+test("神器与奇观详情按内容 id 显示对应原创插图", () => {
+  const { debug, context } = createWorldRuntime(); const initial = debug.generate("legacy-art"), kingdomId = initial.development[0][0];
+  let snapshot = debug.discoverArtifact(initial.legacy.sites[0][0], kingdomId), artifact = snapshot.legacy.artifacts[0]; context.inspectLegacyEntity(`artifact:${artifact[0]}`);
+  let html = context.document.getElementById("selectionCard").innerHTML; assert.match(html, /legacy-atlas-art legacy-detail-art/); assert.match(html, /原创像素插图/);
+  snapshot = debug.beginWonder(kingdomId); const wonder = snapshot.legacy.wonders[0]; assert.ok(wonder); context.inspectLegacyEntity(`wonder:${wonder[0]}`);
+  html = context.document.getElementById("selectionCard").innerHTML; assert.match(html, /legacy-atlas-art legacy-detail-art/); assert.match(html, /原创像素插图/);
+});
+
 test("动态事件支持玩家选择并记录长期结果", () => {
   const { debug } = createWorldRuntime();
   debug.generate("legacy-event");

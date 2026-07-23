@@ -52,6 +52,7 @@ const heroNames = Object.freeze({
 });
 
 const worldEventChains = globalThis.RealmWorldEventContent?.chains || Object.freeze({});
+const { cellStyle: experienceArtCellStyle } = globalThis.RealmArtAtlas;
 
 function createWorldEventState(nextYear = 14) {
   return { nextYear, active: null, pending: null, consequences: [], history: [], memories: [], completed: {}, locked: [], nextConsequenceId: 1, lastChain: null };
@@ -511,7 +512,7 @@ function renderActiveWorldEvent() {
   const active = worldEventState.active, stage = eventStage(active); modal.hidden = !active || !stage; if (!active || !stage) return;
   const chain = worldEventChains[active.chain], stages = Object.keys(chain.stages), chapter = stages.indexOf(active.stage) + 1;
   const participants = active.participants.map(participant => `${participant.role}：${getKingdom(participant.kingdomId)?.name || "失落文明"}`).join(" · ");
-  document.getElementById("worldEventContent").innerHTML = `<div class="world-event-icon">${chain.icon}</div><small>${chain.name} · 第 ${chapter} / ${stages.length} 章</small><h2>${stage.title}</h2><p>${stage.text}</p><div class="world-event-participants">${participants}</div><div class="world-event-choices">${stage.choices.map(choice => `<button data-world-event-choice="${choice.id}"><b>${choice.label}</b><span>${choice.hint}</span>${choice.delayed ? `<small>⌛ 将在约 ${choice.delayed.after} 个纪元后产生后果</small>` : ""}</button>`).join("")}</div><small class="muted">若不选择，文明将在约 2.5 个纪元后自行决定；选择会写入外交、人物与世界历史。</small>`;
+  document.getElementById("worldEventContent").innerHTML = `<div class="event-art world-event-art" style="${experienceArtCellStyle("events", active.chain)}" role="img" aria-label="${chain.name}原创像素插图"></div><small>${chain.name} · 第 ${chapter} / ${stages.length} 章</small><h2>${stage.title}</h2><p>${stage.text}</p><div class="world-event-participants">${participants}</div><div class="world-event-choices">${stage.choices.map(choice => `<button data-world-event-choice="${choice.id}"><b>${choice.label}</b><span>${choice.hint}</span>${choice.delayed ? `<small>⌛ 将在约 ${choice.delayed.after} 个纪元后产生后果</small>` : ""}</button>`).join("")}</div><small class="muted">若不选择，文明将在约 2.5 个纪元后自行决定；选择会写入外交、人物与世界历史。</small>`;
 }
 
 function inspectHero(heroId) {
@@ -519,14 +520,14 @@ function inspectHero(heroId) {
   selectedHeroId = hero.id; selectedKingdomId = null; selectedTradeRouteId = null; selectedArmyId = null; selectedLegacyId = null;
   const person = getPerson(hero.personId), kingdom = getKingdom(hero.kingdomId), def = heroArchetypes[hero.archetype], box = document.getElementById("selectionCard");
   box.classList.remove("empty");
-  box.innerHTML = `<h4 style="color:${def.color}">${def.icon} ${hero.title}${hero.name}</h4><div class="detail-row"><span>所属文明</span><b>${kingdom?.name || "失落文明"}</b></div><div class="detail-row"><span>状态 / 等级</span><b>${hero.status === "active" ? "活跃" : `传奇 · 纪元 ${hero.fallenYear || "?"}`} / ${hero.level}</b></div><div class="detail-row"><span>声望 / 胜绩</span><b>${Math.floor(hero.renown)} / ${hero.victories}</b></div><div class="detail-row"><span>现职</span><b>${person ? (professionDefs[person.profession]?.name || unitDefs[person.unitType]?.name || "居民") : "历史人物"}</b></div><p class="muted">${hero.status === "active" ? def.effect : hero.legacy || "事迹被编入世界史"}</p>${typeof heroArtifactDetailHtml === "function" ? heroArtifactDetailHtml(hero) : ""}`;
+  box.innerHTML = `<div class="hero-art hero-detail-art" style="${experienceArtCellStyle("heroes", hero.archetype)}" role="img" aria-label="${hero.title}原创像素肖像"></div><h4 style="color:${def.color}">${def.icon} ${hero.title}${hero.name}</h4><div class="detail-row"><span>所属文明</span><b>${kingdom?.name || "失落文明"}</b></div><div class="detail-row"><span>状态 / 等级</span><b>${hero.status === "active" ? "活跃" : `传奇 · 纪元 ${hero.fallenYear || "?"}`} / ${hero.level}</b></div><div class="detail-row"><span>声望 / 胜绩</span><b>${Math.floor(hero.renown)} / ${hero.victories}</b></div><div class="detail-row"><span>现职</span><b>${person ? (professionDefs[person.profession]?.name || unitDefs[person.unitType]?.name || "居民") : "历史人物"}</b></div><p class="muted">${hero.status === "active" ? def.effect : hero.legacy || "事迹被编入世界史"}</p>${typeof heroArtifactDetailHtml === "function" ? heroArtifactDetailHtml(hero) : ""}`;
 }
 
 function renderExperiencePanels() {
   const heroList = document.getElementById("heroList");
   if (heroList) {
     const ordered = [...heroes].sort((a, b) => Number(a.status !== "active") - Number(b.status !== "active") || b.level - a.level || b.renown - a.renown).slice(0, 12);
-    heroList.innerHTML = ordered.length ? ordered.map(hero => { const kingdom = getKingdom(hero.kingdomId), def = heroArchetypes[hero.archetype]; return `<button class="hero-item ${hero.status}" data-hero="${hero.id}" style="--hero-color:${def.color}"><b>${def.icon} ${hero.title}${hero.name}</b><span>${kingdom?.name || "失落文明"} · ${hero.level}级 · 声望 ${Math.floor(hero.renown)}</span></button>`; }).join("") : `<p class="muted">英雄尚未在历史中崭露头角</p>`;
+    heroList.innerHTML = ordered.length ? ordered.map(hero => { const kingdom = getKingdom(hero.kingdomId), def = heroArchetypes[hero.archetype]; return `<button class="hero-item ${hero.status}" data-hero="${hero.id}" style="--hero-color:${def.color};${experienceArtCellStyle("heroes", hero.archetype)}"><span class="hero-art hero-list-art" aria-hidden="true"></span><span class="hero-copy"><b>${def.icon} ${hero.title}${hero.name}</b><span>${kingdom?.name || "失落文明"} · ${hero.level}级 · 声望 ${Math.floor(hero.renown)}</span></span></button>`; }).join("") : `<p class="muted">英雄尚未在历史中崭露头角</p>`;
   }
   const eventSummary = document.getElementById("worldEventSummary");
   if (eventSummary) {

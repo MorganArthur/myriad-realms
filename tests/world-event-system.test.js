@@ -33,6 +33,12 @@ test("事件链跨章节保留参与文明、路径与历史记忆", () => {
   assert.ok(snapshot.worldEvent.consequences.length >= 2);
 });
 
+test("大型事件弹窗按事件 id 显示对应原创插图", () => {
+  const { debug, context } = createWorldRuntime(); debug.generate("world-event-art"); debug.triggerWorldEvent("starfall", "omen");
+  context.renderActiveWorldEvent(); const html = context.document.getElementById("worldEventContent").innerHTML;
+  assert.match(html, /class="event-art world-event-art"/); assert.match(html, /--art-x:0%;--art-y:0%/); assert.match(html, /星落之谜原创像素插图/);
+});
+
 test("选择可以锁定互斥事件路线", () => {
   const { debug } = createWorldRuntime();
   debug.generate("world-event-locks");

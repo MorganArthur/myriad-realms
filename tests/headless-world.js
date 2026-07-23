@@ -44,7 +44,7 @@ function createWorldRuntime() {
   context.window = context;
   context.addEventListener = () => {};
   context.requestIdleCallback = callback => (callback(), 1);
-  for (const file of ["engine-core.js", "world-config.js", "pixel-art-system.js", "world-event-content.js", "regional-event-content.js", "experience-system.js", "long-term-system.js", "dynasty-system.js", "politics-system.js", "legacy-system.js", "world-challenge-system.js", "game-ui.js", "game-persistence.js", "game.js"]) {
+  for (const file of ["engine-core.js", "world-config.js", "pixel-art-system.js", "art-atlas.js", "world-event-content.js", "regional-event-content.js", "experience-system.js", "long-term-system.js", "dynasty-system.js", "politics-system.js", "legacy-system.js", "world-challenge-system.js", "game-ui.js", "game-persistence.js", "game.js"]) {
     new vm.Script(fs.readFileSync(path.join(root, file), "utf8"), { filename: file }).runInContext(context);
   }
   return { debug: context.RealmDebug, config: context.RealmConfig, engine: context.WorldEngine, context };
