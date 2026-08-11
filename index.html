@@ -13,8 +13,7 @@
       <div class="world-stats">
         <span>纪元 <b id="yearStat">1</b></span><span>人口 <b id="populationStat">0</b></span>
         <span>聚落 <b id="villageStat">0</b></span><span>王国 <b id="kingdomStat">0</b></span>
-        <span>生物 <b id="animalStat">0</b></span><span>战争 <b id="warStat">0</b></span>
-        <span>灾害 <b id="disasterStat">0</b></span><span>气候 <b id="climateStat">🌱 春</b></span>
+        <span>天灾 <b id="disasterStat">0</b></span>
       </div>
       <div class="top-actions">
         <button id="pauseBtn" class="icon-btn active" title="暂停或继续">▶</button>
@@ -27,26 +26,15 @@
     <section class="workspace">
       <aside class="toolbox panel">
         <h2>创世工具</h2><p class="hint">选中后，在地图上点击或拖动</p>
-        <div class="tool-grid">
-          <div class="tool-category">观察与地形</div>
-          <button class="tool active" data-tool="inspect"><span>☝</span>观察</button><button class="tool" data-tool="land"><span>🌱</span>陆地</button>
-          <button class="tool" data-tool="water"><span>💧</span>海洋</button><button class="tool" data-tool="forest"><span>🌲</span>森林</button>
-          <div class="tool-category">居民</div>
-          <button class="tool" data-tool="human"><span>🧑</span>人类</button><button class="tool" data-tool="elf"><span>🧝</span>精灵</button>
-          <button class="tool" data-tool="dwarf"><span>⛏</span>矮人</button><button class="tool" data-tool="orc"><span>👹</span>兽人</button>
-          <div class="tool-category">动物</div>
-          <button class="tool" data-tool="rabbit"><span>🐇</span>野兔</button><button class="tool" data-tool="deer"><span>🦌</span>鹿</button>
-          <button class="tool" data-tool="boar"><span>🐗</span>野猪</button><button class="tool" data-tool="fox"><span>🦊</span>赤狐</button>
-          <button class="tool" data-tool="wolf"><span>🐺</span>狼</button><button class="tool" data-tool="bear"><span>🐻</span>棕熊</button>
-          <div class="tool-category danger-label">神力与天灾</div>
-          <button class="tool" data-tool="bless"><span>✨</span>祝福</button><button class="tool danger" data-tool="fire"><span>🔥</span>烈火</button>
-          <button class="tool" data-tool="earthquake"><span>🌎</span>地震</button><button class="tool" data-tool="flood"><span>🌊</span>洪水</button>
-          <button class="tool" data-tool="tornado"><span>🌪</span>龙卷风</button><button class="tool" data-tool="volcano"><span>🌋</span>火山</button>
-          <button class="tool" data-tool="plague"><span>☣</span>瘟疫</button><button class="tool" data-tool="drought"><span>☀</span>干旱</button>
+        <button class="tool active observe-tool" data-tool="inspect"><span>☝</span>观察世界</button>
+        <div class="compact-tools">
+          <label>改变地形<select data-tool-select="terrain"><option value="">选择地形工具</option><option value="land">🌱 塑造陆地</option><option value="water">💧 化为海洋</option><option value="forest">🌲 播种森林</option></select></label>
+          <label>放置生命<select data-tool-select="life"><option value="">选择居民或动物</option><optgroup label="居民"><option value="human">🧑 人类</option><option value="elf">🧝 精灵</option><option value="dwarf">⛏ 矮人</option><option value="orc">👹 兽人</option></optgroup><optgroup label="动物"><option value="rabbit">🐇 野兔</option><option value="deer">🦌 鹿</option><option value="boar">🐗 野猪</option><option value="fox">🦊 赤狐</option><option value="wolf">🐺 狼</option><option value="bear">🐻 棕熊</option></optgroup></select></label>
+          <label>使用神力<select data-tool-select="power"><option value="">选择神力</option><option value="bless">✨ 祝福</option><option value="fire">🔥 烈火</option><optgroup label="天灾"><option value="earthquake">🌎 地震</option><option value="flood">🌊 洪水</option><option value="tornado">🌪 龙卷风</option><option value="volcano">🌋 火山</option><option value="plague">☣ 瘟疫</option><option value="drought">☀ 干旱</option></optgroup></select></label>
         </div>
+        <p id="activeToolLabel" class="active-tool-label">当前：观察世界</p>
         <label class="range-row">作用范围 <b id="brushValue">2</b><input id="brushSize" type="range" min="1" max="6" value="2" /></label>
-        <div class="disaster-controls"><label><input id="randomDisasterToggle" type="checkbox" checked /> 随机天灾</label><label>频率 <select id="disasterFrequency"><option value="rare">稀少</option><option value="normal" selected>正常</option><option value="frequent">频繁</option></select></label></div>
-        <div class="seed-controls"><label for="worldSeedInput">世界种子</label><div><input id="worldSeedInput" maxlength="64" spellcheck="false" /><button id="randomSeedBtn" title="随机种子">↻</button></div><small>相同种子会生成相同初始世界</small></div>
+        <details class="world-settings"><summary>世界设置</summary><div class="disaster-controls"><label><input id="randomDisasterToggle" type="checkbox" checked /> 随机天灾</label><label>频率 <select id="disasterFrequency"><option value="rare">稀少</option><option value="normal" selected>正常</option><option value="frequent">频繁</option></select></label></div><div class="seed-controls"><label for="worldSeedInput">世界种子</label><div><input id="worldSeedInput" maxlength="64" spellcheck="false" /><button id="randomSeedBtn" title="随机种子">↻</button></div><small>相同种子生成相同初始地图</small></div></details>
         <button id="newWorldBtn" class="wide-btn">生成新世界</button><button id="saveBtn" class="wide-btn secondary">快速保存</button><button id="loadBtn" class="wide-btn secondary">世界档案</button>
       </aside>
 
@@ -62,13 +50,13 @@
         <nav id="inspectorTabs" class="inspector-tabs"><button class="active" data-inspector-tab="overview">概览</button><button data-inspector-tab="kingdoms">王国</button><button data-inspector-tab="history">事件</button></nav>
         <div class="inspector-panels">
           <section class="inspector-tab-panel active" data-inspector-panel="overview">
-            <h3>气候</h3><div id="climateList" class="card-list"></div><h3>生态</h3><div id="ecologyList" class="card-list"></div><h3>居民与聚落</h3><div id="societyList" class="card-list"></div><h3>世界统计</h3><div id="worldStatsList" class="card-list"></div>
+            <h3>此刻的世界</h3><div id="climateList" class="card-list"></div><div id="societyList" class="card-list compact-summary"></div>
           </section>
           <section class="inspector-tab-panel" data-inspector-panel="kingdoms" hidden>
             <h3>王国资源与建筑</h3><div id="kingdomList" class="kingdom-list"><p class="muted">文明正在萌芽</p></div><h3>外交关系</h3><div id="diplomacyList" class="card-list"></div>
           </section>
           <section class="inspector-tab-panel" data-inspector-panel="history" hidden>
-            <h3>活动天灾</h3><div id="disasterList" class="card-list"><p class="muted">世界平静</p></div><h3>近期事件</h3><div id="eventLog" class="event-log"></div><div class="section-title-row"><h3>编年史</h3><button id="exportChronicleBtn" class="text-button">导出</button></div><div id="chronicleList" class="event-log chronicle-list"></div>
+            <h3>活动天灾</h3><div id="disasterList" class="card-list"><p class="muted">世界平静</p></div><div class="section-title-row"><h3>最近发生</h3><button id="exportChronicleBtn" class="text-button">导出全部</button></div><div id="eventLog" class="event-log"></div>
           </section>
         </div>
       </aside>

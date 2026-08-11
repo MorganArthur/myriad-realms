@@ -17,3 +17,10 @@ test("旧存档迁移时丢弃已退役字段和不支持的建筑", () => {
   legacy.villages = legacy.villages.map(village => { const old = { ...village, kingdom: village.kingdomId - 1, inventory: village.resources }; delete old.kingdomId; delete old.resources; return old; }); legacy.villages[0].structures.push({ id: 999, type: "barracks", x: 1, y: 1, hp: 80, maxHp: 100 });
   debug.restore(legacy); const state = game.getState(); assert.equal(Object.hasOwn(state, "achievements"), false); assert.equal(Object.hasOwn(state, "heroes"), false); assert.equal(Object.hasOwn(state, "armies"), false); assert.equal(Object.hasOwn(state.people[0], "profession"), false); assert.equal(state.villages[0].structures.some(item => item.type === "barracks"), false); assert.equal(new Set(state.kingdoms.map(item => item.id)).size, 4); assert.ok(state.kingdoms.some(item => item.id === 0)); assert.equal(state.people[0].kingdomId, state.villages.find(item => item.id === state.people[0].villageId).kingdomId); assert.notEqual(state.tiles[0].terrain, undefined);
 });
+
+test("载入含重名的世界时自动生成唯一聚落和王国名称", () => {
+  const { game, debug } = createWorldRuntime(); debug.generate("duplicate-names"); const raw = debug.save();
+  raw.state.villages[1].name = raw.state.villages[0].name; raw.state.villages[2].name = raw.state.villages[0].name; raw.state.kingdoms[1].name = raw.state.kingdoms[0].name;
+  debug.restore(raw); const state = game.getState(), villageNames = state.villages.map(item => item.name), kingdomNames = state.kingdoms.map(item => item.name);
+  assert.equal(new Set(villageNames).size, villageNames.length); assert.equal(new Set(kingdomNames).size, kingdomNames.length); assert.ok(villageNames.some(name => name.includes("·二")));
+});

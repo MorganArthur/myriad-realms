@@ -15,6 +15,8 @@
   const choice = list => list.length ? list[engine.randi(0, list.length - 1)] : null;
   const isLand = tile => Boolean(tile && landTerrains.has(tile.terrain));
   const relationKey = value => String(value);
+  const settlementEndings = ["河湾", "林谷", "石丘", "青原", "溪岸", "望海", "橡林", "风坡", "湖畔", "长堤"];
+  const ordinalName = value => ["", "", "二", "三", "四", "五", "六", "七", "八", "九", "十"][value] || String(value);
   function defaultStats() { return { births: 0, deaths: 0, villagesFounded: 0, villagesCaptured: 0, buildingsConstructed: 0, buildingsDestroyed: 0, warsStarted: 0, warsEnded: 0, disastersTriggered: 0, disastersSurvived: 0, resourceExchanges: 0, peakPopulation: 0, peakAnimals: 0 }; }
   function addEvent(text, important = false) { const item = { year: state.year, text: engine.cleanText(text) }; state.events.unshift(item); state.events.length = Math.min(state.events.length, 30); if (important || state.ticks % 10 === 0) { state.chronicle.push(item); if (state.chronicle.length > 300) state.chronicle.shift(); } }
   function buildIndexes() {
@@ -23,6 +25,15 @@
     state.indexes = { kingdomById, villageById, peopleByVillage, peopleByKingdom };
   }
   function nextName(race) { const parts = config.races[race].names; return `${choice(parts)}${choice(parts)}`; }
+  function uniqueGeneratedName(items, factory, fallback) {
+    const used = new Set(items.map(item => item.name)); let candidate = "";
+    for (let attempt = 0; attempt < 24; attempt++) { candidate = engine.cleanText(factory()); if (candidate && !used.has(candidate)) return candidate; }
+    const base = candidate || fallback; let serial = 2; while (used.has(`${base}·${ordinalName(serial)}`)) serial++; return `${base}·${ordinalName(serial)}`;
+  }
+  function ensureUniqueNames(items, fallback) {
+    const used = new Set();
+    for (const item of items) { const base = engine.cleanText(item.name) || `${fallback}${item.id}`, duplicate = used.has(base); let name = base, serial = 2; while (used.has(name)) name = `${base}·${ordinalName(serial++)}`; item.name = name; used.add(name); if (duplicate) addEvent(`${base}更名为${name}`); }
+  }
   function worldMetrics() {
     let water = 0, healthy = 0, land = 0;
     for (const tile of state.tiles) { if (tile.terrain === "water" || tile.terrain === "deepWater") water++; else { land++; healthy += tile.fertility * (1 - tile.dryness) * (tile.fire > 0 ? .2 : 1); } }
@@ -58,13 +69,13 @@
   }
   function updateVillageCapacity(village) { village.capacity = config.balance.settlement.baseCapacity + village.structures.reduce((sum, item) => sum + (config.buildings[item.type]?.capacity || 0), 0); }
   function createKingdom(race, colorIndex = state.kingdoms.length) {
-    const id = state.kingdoms.length ? Math.max(...state.kingdoms.map(item => item.id)) + 1 : 1, kingdom = { id, name: `${nextName(race)}之地`, race, color: config.kingdomColors[colorIndex % config.kingdomColors.length], capitalId: null, villageIds: [], relations: {} };
+    const id = state.kingdoms.length ? Math.max(...state.kingdoms.map(item => item.id)) + 1 : 1, name = uniqueGeneratedName(state.kingdoms, () => `${nextName(race)}之地`, `${config.races[race].name}之地`), kingdom = { id, name, race, color: config.kingdomColors[colorIndex % config.kingdomColors.length], capitalId: null, villageIds: [], relations: {} };
     for (const other of state.kingdoms) { const value = engine.randi(-36, 36); kingdom.relations[relationKey(other.id)] = { status: "peace", value, weariness: 0 }; other.relations[relationKey(id)] = { status: "peace", value, weariness: 0 }; }
     state.kingdoms.push(kingdom); return kingdom;
   }
   function createVillage(kingdom, x, y, initial = false) {
     const spot = findLandNear(x, y, initial ? 25 : 12); if (!spot) return null;
-    const village = { id: state.ids.village++, name: `${nextName(kingdom.race)}聚落`, x: spot.x, y: spot.y, kingdomId: kingdom.id, founded: state.year, resources: { food: config.balance.settlement.initialFood, wood: config.balance.settlement.initialWood, stone: config.balance.settlement.initialStone }, structures: [], capacity: config.balance.settlement.baseCapacity };
+    const name = uniqueGeneratedName(state.villages, () => `${nextName(kingdom.race)}${choice(settlementEndings)}`, `${config.races[kingdom.race].name}聚落`), village = { id: state.ids.village++, name, x: spot.x, y: spot.y, kingdomId: kingdom.id, founded: state.year, resources: { food: config.balance.settlement.initialFood, wood: config.balance.settlement.initialWood, stone: config.balance.settlement.initialStone }, structures: [], capacity: config.balance.settlement.baseCapacity };
     state.villages.push(village); kingdom.villageIds.push(village.id); if (kingdom.capitalId == null) kingdom.capitalId = village.id;
     addStructure(village, "hall", true); addStructure(village, "house", true); addStructure(village, "farm", true); state.worldStats.villagesFounded++;
     if (!initial) addEvent(`${kingdom.name}建立了${village.name}`, true); return village;
@@ -264,7 +275,7 @@
     const kingdom = state.indexes.kingdomById.get(tile.kingdomId), names = { deepWater: "深海", water: "浅海", sand: "沙滩", grass: "草地", forest: "森林", hill: "丘陵", mountain: "山地", snow: "雪峰", scorched: "焦土" }; return { x: tile.x, y: tile.y, icon: tile.terrain === "forest" ? "🌲" : tile.terrain.includes("water") ? "💧" : "◇", title: names[tile.terrain], lines: [`肥力 ${Math.round(tile.fertility * 100)}%`, `湿润 ${Math.round((1 - tile.dryness) * 100)}%`, kingdom?.name || "无归属"] };
   }
 
-  function restore(restored) { state = restored; state.indexes = null; worldMetrics(); buildIndexes(); engine.setSeed(state.worldSeed); if (state.randomState) engine.restoreRandomState(state.randomState); lastAutoYear = Math.floor(state.year); globalThis.RealmUI?.resetCamera(); globalThis.RealmUI?.refreshSelection(); const input = typeof document !== "undefined" ? document.getElementById("worldSeedInput") : null; if (input) input.value = state.worldSeed; return state; }
+  function restore(restored) { state = restored; state.indexes = null; ensureUniqueNames(state.kingdoms, "王国"); ensureUniqueNames(state.villages, "聚落"); worldMetrics(); buildIndexes(); engine.setSeed(state.worldSeed); if (state.randomState) engine.restoreRandomState(state.randomState); lastAutoYear = Math.floor(state.year); globalThis.RealmUI?.resetCamera(); globalThis.RealmUI?.resetTools(); globalThis.RealmUI?.refreshSelection(); const input = typeof document !== "undefined" ? document.getElementById("worldSeedInput") : null; if (input) input.value = state.worldSeed; return state; }
   function save(slot = 0) { const result = persistence.save(state, slot); if (typeof document !== "undefined") document.getElementById("saveStatus").textContent = `已保存到存档 ${slot + 1} · 纪元 ${Math.floor(state.year)}`; globalThis.RealmUI?.showToast("世界已保存"); return result; }
   function load(slot = 0) { const restored = persistence.load(slot); if (!restored) { globalThis.RealmUI?.showToast("这个存档是空的"); return false; } restore(restored); globalThis.RealmUI?.showToast("世界已载入"); return true; }
   function importSave(raw) { restore(persistence.normalize(raw)); globalThis.RealmUI?.showToast("存档已导入"); return true; }

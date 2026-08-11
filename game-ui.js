@@ -34,14 +34,11 @@
   }
 
   function infoRows(rows) { return rows.map(([name, value]) => `<div class="info-card info-row"><span>${escape(name)}</span><span>${escape(value)}</span></div>`).join(""); }
-  function countSpecies(state) { const counts = {}; for (const animal of state.animals) counts[animal.species] = (counts[animal.species] || 0) + 1; return counts; }
   function renderOverview(state) {
     const season = config.seasons[state.climate.seasonIndex], weather = config.weather[state.climate.weather];
-    byId("climateList").innerHTML = infoRows([["季节", `${season.icon} ${season.name}`], ["天气", `${weather.icon} ${weather.name}`], ["土地健康", `${Math.round(state.biomeHealth * 100)}%`], ["水域比例", `${Math.round(state.waterRatio * 100)}%`]]);
-    const counts = countSpecies(state); byId("ecologyList").innerHTML = infoRows(Object.entries(config.animals).map(([key, value]) => [`${value.icon} ${value.name}`, counts[key] || 0]));
-    const averageHealth = state.people.length ? state.people.reduce((sum, item) => sum + item.health, 0) / state.people.length : 0, averageHappiness = state.people.length ? state.people.reduce((sum, item) => sum + item.happiness, 0) / state.people.length : 0;
-    byId("societyList").innerHTML = infoRows([["居民", state.people.length], ["聚落", state.villages.length], ["平均健康", `${Math.round(averageHealth)}%`], ["平均幸福", `${Math.round(averageHappiness)}%`]]);
-    byId("worldStatsList").innerHTML = infoRows([["新生", state.worldStats.births], ["逝去", state.worldStats.deaths], ["建成建筑", state.worldStats.buildingsConstructed], ["资源互助", state.worldStats.resourceExchanges], ["发生天灾", state.worldStats.disastersTriggered], ["聚落变迁", state.worldStats.villagesCaptured]]);
+    byId("climateList").innerHTML = infoRows([["天候", `${season.icon} ${season.name} · ${weather.icon} ${weather.name}`], ["土地", `健康 ${Math.round(state.biomeHealth * 100)}% · 水域 ${Math.round(state.waterRatio * 100)}%`], ["生命", `${state.people.length} 名居民 · ${state.animals.length} 只动物`]]);
+    const averageHealth = state.people.length ? state.people.reduce((sum, item) => sum + item.health, 0) / state.people.length : 0;
+    byId("societyList").innerHTML = infoRows([["文明", `${state.villages.length} 个聚落 · ${state.kingdoms.length} 个王国`], ["状态", `健康 ${Math.round(averageHealth)}% · ${state.activeDisasters.length ? `${state.activeDisasters.length} 场天灾` : game.countWars() ? `${game.countWars()} 组冲突` : "世界平静"}`]]);
   }
   function aggregateKingdom(state, kingdom) {
     const villages = state.villages.filter(item => item.kingdomId === kingdom.id), people = state.people.filter(item => item.kingdomId === kingdom.id), resources = { food: 0, wood: 0, stone: 0 }, buildings = {};
@@ -49,22 +46,22 @@
     return { villages, people, resources, buildings };
   }
   function renderKingdoms(state) {
-    byId("kingdomList").innerHTML = state.kingdoms.map(kingdom => { const totals = aggregateKingdom(state, kingdom); return `<article class="kingdom-card" style="--kingdom:${kingdom.color}"><header><b>${escape(kingdom.name)}</b><span>${config.races[kingdom.race].icon} ${totals.people.length} 人</span></header><div class="resources"><span>🌾 ${Math.floor(totals.resources.food)}</span><span>🪵 ${Math.floor(totals.resources.wood)}</span><span>🪨 ${Math.floor(totals.resources.stone)}</span></div><div class="building-chips">${Object.entries(totals.buildings).map(([type, count]) => `<span>${config.buildings[type]?.icon || "·"} ${count}</span>`).join("") || "尚无建筑"}</div><small>${totals.villages.length} 个聚落</small></article>`; }).join("") || `<p class="muted">尚无王国</p>`;
+    byId("kingdomList").innerHTML = state.kingdoms.map(kingdom => { const totals = aggregateKingdom(state, kingdom), buildingTotal = Object.values(totals.buildings).reduce((sum, count) => sum + count, 0); return `<article class="kingdom-card" style="--kingdom:${kingdom.color}"><header><b>${escape(kingdom.name)}</b><span>${config.races[kingdom.race].icon} ${totals.people.length} 人</span></header><div class="resources"><span>🌾 ${Math.floor(totals.resources.food)}</span><span>🪵 ${Math.floor(totals.resources.wood)}</span><span>🪨 ${Math.floor(totals.resources.stone)}</span></div><div class="kingdom-note"><span>${totals.villages.length} 个聚落</span><span>${buildingTotal} 座建筑</span></div></article>`; }).join("") || `<p class="muted">尚无王国</p>`;
     const relations = [];
-    for (let index = 0; index < state.kingdoms.length; index++) for (let second = index + 1; second < state.kingdoms.length; second++) { const first = state.kingdoms[index], other = state.kingdoms[second], relation = first.relations[other.id] || { status: "peace", value: 0 }; relations.push(`<article class="relation-card ${relation.status}"><div class="info-row"><b>${escape(first.name)} · ${escape(other.name)}</b><span>${config.relationLabels[relation.status]}</span></div><small>关系 ${Math.round(relation.value)}</small></article>`); }
-    byId("diplomacyList").innerHTML = relations.join("") || `<p class="muted">尚无外交关系</p>`;
+    for (let index = 0; index < state.kingdoms.length; index++) for (let second = index + 1; second < state.kingdoms.length; second++) { const first = state.kingdoms[index], other = state.kingdoms[second], relation = first.relations[other.id] || { status: "peace", value: 0 }; if (relation.status === "peace" && Math.abs(relation.value) < 45) continue; relations.push(`<article class="relation-card ${relation.status}"><div class="info-row"><b>${escape(first.name)} · ${escape(other.name)}</b><span>${config.relationLabels[relation.status]}</span></div></article>`); }
+    byId("diplomacyList").innerHTML = relations.join("") || `<p class="muted">各国维持和平</p>`;
   }
   function renderHistory(state) {
     byId("disasterList").innerHTML = state.activeDisasters.map(item => { const definition = config.disasters[item.type]; return `<article class="info-card"><b>${definition.icon} ${definition.name}</b><div class="info-row"><span>影响范围 ${item.radius} 格</span><span>剩余 ${Math.ceil(item.remaining)}</span></div></article>`; }).join("") || `<p class="muted">世界平静</p>`;
-    const events = list => list.map(item => `<article class="event-item"><strong>纪元 ${Math.floor(item.year)}</strong>　${escape(item.text)}</article>`).join(""); byId("eventLog").innerHTML = events(state.events.slice(0, 12)); byId("chronicleList").innerHTML = events(state.chronicle.slice(-80).reverse());
+    const events = list => list.map(item => `<article class="event-item"><strong>纪元 ${Math.floor(item.year)}</strong>　${escape(item.text)}</article>`).join(""); byId("eventLog").innerHTML = events(state.events.slice(0, 10));
   }
   function renderSelection() {
     const card = byId("selectionCard"); if (!selection) { card.className = "selection-card empty"; card.innerHTML = `<div class="selection-icon">◌</div><p>点击地图查看土地、居民或聚落</p>`; return; }
     card.className = "selection-card"; card.innerHTML = `<div class="selection-icon">${selection.icon}</div><p><b>${escape(selection.title)}</b><br>${selection.lines.map(escape).join(" · ")}</p>`;
   }
   function renderStats(state, now) {
-    byId("yearStat").textContent = Math.floor(state.year); byId("populationStat").textContent = state.people.length; byId("villageStat").textContent = state.villages.length; byId("kingdomStat").textContent = state.kingdoms.length; byId("animalStat").textContent = state.animals.length; byId("warStat").textContent = game.countWars(); byId("disasterStat").textContent = state.activeDisasters.length;
-    const season = config.seasons[state.climate.seasonIndex]; byId("climateStat").textContent = `${season.icon} ${season.name}`; byId("worldName").textContent = state.worldName; byId("worldSeedStat").textContent = `种子 ${state.worldSeed}`; byId("pauseBtn").textContent = state.running ? "Ⅱ" : "▶";
+    byId("yearStat").textContent = Math.floor(state.year); byId("populationStat").textContent = state.people.length; byId("villageStat").textContent = state.villages.length; byId("kingdomStat").textContent = state.kingdoms.length; byId("disasterStat").textContent = state.activeDisasters.length;
+    byId("worldName").textContent = state.worldName; byId("worldSeedStat").textContent = `种子 ${state.worldSeed}`; byId("pauseBtn").textContent = state.running ? "Ⅱ" : "▶";
     document.querySelectorAll(".speed-btn").forEach(button => button.classList.toggle("active", Number(button.dataset.speed) === state.speed));
     const danger = state.activeDisasters.length > 0, alert = byId("inspectorAlert"); alert.textContent = danger ? `${state.activeDisasters.length} 场天灾` : game.countWars() ? `${game.countWars()} 组冲突` : "世界平静"; alert.classList.toggle("danger", danger);
     renderSelection(); if (activeTab === "overview") renderOverview(state); if (activeTab === "kingdoms") renderKingdoms(state); if (activeTab === "history") renderHistory(state);
@@ -85,17 +82,20 @@
     const end = () => { dragging = false; painting = false; last = null; }; canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
     canvas.addEventListener("wheel", event => { event.preventDefault(); const before = screenToWorld(eventPoint(event).x, eventPoint(event).y); camera.zoom = Math.max(.45, Math.min(3.2, camera.zoom * (event.deltaY < 0 ? 1.12 : .89))); const after = screenToWorld(eventPoint(event).x, eventPoint(event).y); camera.x += before.x - after.x; camera.y += before.y - after.y; }, { passive: false });
   }
+  function updateToolControls(tool, label, source = null) { document.querySelectorAll(".tool").forEach(button => button.classList.toggle("active", tool === "inspect")); document.querySelectorAll("[data-tool-select]").forEach(select => { if (select !== source) select.value = ""; }); byId("activeToolLabel").textContent = `当前：${label}`; }
+  function chooseTool(tool, label, source = null) { game.setTool(tool); updateToolControls(tool, label, source); }
   function bindControls() {
     byId("pauseBtn")?.addEventListener("click", () => game.toggleRunning()); document.querySelectorAll(".speed-btn").forEach(button => button.addEventListener("click", () => game.setSpeed(Number(button.dataset.speed))));
-    document.querySelectorAll(".tool").forEach(button => button.addEventListener("click", () => { game.setTool(button.dataset.tool); document.querySelectorAll(".tool").forEach(item => item.classList.toggle("active", item === button)); }));
+    document.querySelectorAll(".tool").forEach(button => button.addEventListener("click", () => chooseTool(button.dataset.tool, "观察世界")));
+    document.querySelectorAll("[data-tool-select]").forEach(select => select.addEventListener("change", () => { if (select.value) chooseTool(select.value, select.selectedOptions[0].textContent.trim(), select); }));
     byId("brushSize")?.addEventListener("input", event => { game.setBrush(Number(event.target.value)); byId("brushValue").textContent = event.target.value; });
     byId("randomDisasterToggle")?.addEventListener("change", event => game.setRandomDisasters(event.target.checked)); byId("disasterFrequency")?.addEventListener("change", event => game.setDisasterFrequency(event.target.value));
-    byId("newWorldBtn")?.addEventListener("click", () => game.newWorld(byId("worldSeedInput").value)); byId("randomSeedBtn")?.addEventListener("click", () => { byId("worldSeedInput").value = globalThis.WorldEngine.createRandomSeed(); }); byId("saveBtn")?.addEventListener("click", () => game.save(0));
+    byId("newWorldBtn")?.addEventListener("click", () => { game.newWorld(byId("worldSeedInput").value); chooseTool("inspect", "观察世界"); }); byId("randomSeedBtn")?.addEventListener("click", () => { byId("worldSeedInput").value = globalThis.WorldEngine.createRandomSeed(); }); byId("saveBtn")?.addEventListener("click", () => game.save(0));
     byId("mapModeSelect")?.addEventListener("change", event => { mapMode = event.target.value; terrainCacheKey = ""; updateLegend(game.getState()); });
     byId("inspectorTabs")?.addEventListener("click", event => { const button = event.target.closest("[data-inspector-tab]"); if (button) switchTab(button.dataset.inspectorTab); });
   }
   function initialize(api) { game = api; if (typeof document === "undefined") return; canvas = byId("worldCanvas"); ctx = canvas.getContext("2d", { alpha: false }); terrainCanvas = document.createElement("canvas"); terrainCanvas.width = config.map.width * config.map.tileSize; terrainCanvas.height = config.map.height * config.map.tileSize; terrainContext = terrainCanvas.getContext("2d", { alpha: false }); bindCanvas(); bindControls(); if (globalThis.ResizeObserver) new ResizeObserver(resize).observe(canvas); byId("worldSeedInput").value = game.getState().worldSeed; }
   function frame(state, now) { if (!ctx) return; if (lastFrame) measuredFps = measuredFps * .88 + Math.min(120, 1000 / Math.max(1, now - lastFrame)) * .12; lastFrame = now; draw(state, state.ticks); if (now - lastPanelUpdate > 260) { renderStats(state, now); updateLegend(state); lastPanelUpdate = now; } }
 
-  globalThis.RealmUI = Object.freeze({ initialize, frame, showToast, switchTab, invalidateTerrain() { terrainCacheKey = ""; }, resetCamera() { camera.x = config.map.width / 2; camera.y = config.map.height / 2; camera.zoom = 1; selection = null; terrainCacheKey = ""; }, refreshSelection() { selection = null; renderSelection(); } });
+  globalThis.RealmUI = Object.freeze({ initialize, frame, showToast, switchTab, invalidateTerrain() { terrainCacheKey = ""; }, resetTools() { updateToolControls("inspect", "观察世界"); }, resetCamera() { camera.x = config.map.width / 2; camera.y = config.map.height / 2; camera.zoom = 1; selection = null; terrainCacheKey = ""; }, refreshSelection() { selection = null; renderSelection(); } });
 })();
